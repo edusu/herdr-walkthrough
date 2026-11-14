@@ -108,6 +108,7 @@ says *where* a request shows up, never whether it's done well.
 | **←** **→** (or **j** **k**) | Previous / next step; moving on marks a step read |
 | **x** | Mark the step read or unread |
 | **u** | Unread only: step through only what you haven't read |
+| **w** | Wrap long code lines to fit, or scroll them sideways (also the **Wrap lines** button) |
 | **t** | The task page (**←** from the first step goes there too) |
 | **Esc** | Close a picker, the task editor or a comment, then the dialog |
 
@@ -118,7 +119,8 @@ says *where* a request shows up, never whether it's done well.
 | --- | --- |
 | **Matched against** menu | Found (default), Your own… (write it), or Off; kept per repository and tab |
 | Last turn → **⚡ Auto** | On (default): write the last turn's walkthrough without a click. One click turns it off: only on Generate |
-| `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.task` | Generate, cancel, move, Copy as Markdown, Unread only and write your own task |
+| `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.wrap`, `.task` | Generate, cancel, move, Copy as Markdown, Unread only, wrap lines and write your own task |
+| `settings.lines` in `mod.json` | `"scroll"` (default) or `"wrap"`: how long lines start. [Better Config](https://github.com/munza/herdr-mods/tree/main/better-config) shows it |
 
 </details>
 

@@ -3,7 +3,7 @@
 
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, VirtualListScrollHandle } from "gpui-base";
-import { spaces, panes, focused, agents, theme, props, closeOverlay, hc, exec, nextCommand, settings, shared, setShared, watchFolder } from "herdr";
+import { spaces, panes, focused, agents, theme, props, closeOverlay, hc, exec, nextCommand, settings, shared, setShared, watchFolder, readTextFile, appHome } from "herdr";
 import { SCOPES, repoAt, currentHead, defaultBase, baseChoices, recentCommits, pullRequests, sourceKey, commitMessage, taskSince } from "./lib/sources.js";
 import { overlay, fileTotals, overlayAsks, asksOf } from "./lib/walkthrough.js";
 import { TASK_MODES, taskChoice, resolveTask, taskKey, taskCacheKey, clip, MAX_TASK_CHARS } from "./lib/task.js";
@@ -123,6 +123,8 @@ export class Walkthrough {
     this.read = {}; // the repository's read hunks, { "<path>:<digest>": ms }
     this.readChanged = new Set(); // keys marked or unmarked here and not yet written
     this.unreadOnly = false; // the contents and ← → skip read steps
+    this.wrap = false; // long code lines wrap instead of scrolling sideways; starts from settings.lines in mod.json
+    readTextFile(`${appHome()}/mods/walkthrough/mod.json`).then((raw) => { this.wrap = JSON.parse(raw ?? "{}").settings?.lines === "wrap"; cx.notify(); }).catch(() => {});
     this.openFiles = new Set();
     this.comments = [];
     this.target = null; // { sk, scope, path, line, kind, code }: the line a comment is being written on
@@ -170,7 +172,7 @@ export class Walkthrough {
       await autoGenerate(this, cx, this.turn); // the turn the tab shows: this terminal's newest, else the newest
     });
     cx.timer.every(1000, (cx) => this.tick(cx));
-    // Commands for keys.json: walkthrough.generate, .cancel, .next, .prev, .copy, .unread, .task (write your own).
+    // Commands for keys.json: walkthrough.generate, .cancel, .next, .prev, .copy, .unread, .wrap, .task (write your own).
     cx.spawn(async (cx) => {
       for (;;) {
         const name = String(await nextCommand()).replace(/^walkthrough\./, "").split(":")[0];
@@ -180,6 +182,7 @@ export class Walkthrough {
         else if (name === "prev") this.move(-1);
         else if (name === "copy") await this.copy(cx);
         else if (name === "unread") this.unreadOnly = !this.unreadOnly;
+        else if (name === "wrap") this.wrap = !this.wrap;
         else if (name === "task") this.chooseTask("own", cx);
         cx.notify();
       }
@@ -723,6 +726,7 @@ export class Walkthrough {
     else if (this.view && (k === "left" || k === "k" || k === "p")) this.move(-1);
     else if (this.view && k === "x") this.toggleRead();
     else if (this.view && k === "u") this.unreadOnly = !this.unreadOnly;
+    else if (this.view && k === "w") this.wrap = !this.wrap;
     else if (this.taskView && k === "t") this.go(-1);
     else return;
     cx.notify();
@@ -1274,7 +1278,11 @@ export class Walkthrough {
       }
     }
     if (cut) rows.push(div().px(10).py(6).text_size(11.5).text_color(t.dim).child(`${cut} more line${cut === 1 ? "" : "s"} not drawn here.`));
-    return v_flex().w_full().flex_none().rounded(8).border_1().border_color(t.border).overflow_hidden().children(rows);
+    const box = v_flex().w_full().flex_none().rounded(8).border_1().border_color(t.border).overflow_hidden();
+    if (this.wrap) return box.children(rows);
+    // One sideways scroll for the whole hunk list, so line numbers and code stay aligned; the column is as wide as its longest line.
+    return box.child(h_flex().id(`code-${found[0]?.hunk.id ?? "none"}`).w_full().overflow_x_scrollbar()
+      .child(v_flex().flex_none().min_w_full().children(rows)));
   }
 
   line(t, file, { kind, number, text }, font, numbers = 44) {
@@ -1283,7 +1291,7 @@ export class Walkthrough {
     const spot = this.spot(file, number, side);
     const selected = this.target && sameSpot(this.target, spot);
     // An added or removed line has a coloured edge as well as its tint, so the change reads at a glance.
-    return h_flex().id(`l-${file.scope}:${file.path}-${side}${number}`).h(20).w_full().gap(8).font_family(font).text_size(11.5).cursor_pointer()
+    return h_flex().id(`l-${file.scope}:${file.path}-${side}${number}`).when(this.wrap, (e) => e.min_h(20).items_start()).when(!this.wrap, (e) => e.h(20)).w_full().gap(8).font_family(font).text_size(11.5).cursor_pointer()
       .border_l(2).border_color(kind === "+" ? t.ansi2 : kind === "-" ? t.ansi1 : "#00000000")
       .when(kind === "+", (e) => e.bg(t.ansi2 + "14")).when(kind === "-", (e) => e.bg(t.ansi1 + "14"))
       .when(Boolean(selected), (e) => e.bg(t.selection))
@@ -1297,8 +1305,8 @@ export class Walkthrough {
       })
       .child(div().w(numbers).flex_none().text_right().text_color(t.dim).child(String(number)))
       .child(div().w(10).flex_none().text_color(kind === "+" ? t.ansi2 : kind === "-" ? t.ansi1 : t.dim).child(kind === " " ? "" : kind))
-      .child(h_flex().flex_1().min_w(0).whitespace_nowrap().overflow_hidden().children(text
-        ? tokenize(text, file.path).map((tok) => div().flex_none().text_color(syntaxColor(t, tok.kind)).child(tok.text))
+      .child(h_flex().when(this.wrap, (e) => e.flex_1().min_w(0).flex_wrap()).when(!this.wrap, (e) => e.flex_none().whitespace_nowrap().pr(10)).children(text
+        ? tokenize(text, file.path).map((tok) => div().when(!this.wrap, (e) => e.flex_none()).min_w(0).text_color(syntaxColor(t, tok.kind)).child(tok.text))
         : [div().child(" ")]));
   }
 
@@ -1325,6 +1333,8 @@ export class Walkthrough {
       .child(button(t, "prev", this.step === 0 && this.taskView ? "← Task" : "← Previous", (_e, cx) => { this.move(-1); cx.notify(); }, { small: true, disabled: this.step <= this.firstPage() }))
       .child(button(t, "next", this.step < 0 ? "First step →" : this.step === steps - 1 ? "Not covered →" : "Next →", (_e, cx) => { this.move(1); cx.notify(); }, { small: true, disabled: this.step >= steps }))
       .child(div().text_size(11.5).text_color(t.dim).child(this.step < steps ? `${read} / ${steps} read · ← → to move` : `End of the walkthrough · ${read} / ${steps} read`))
+      .child(button(t, "wrap", this.wrap ? "Scroll lines" : "Wrap lines", (_e, cx) => { this.wrap = !this.wrap; cx.notify(); },
+        { kind: "ghost", small: true, tooltip: this.wrap ? "Keep each line on one row and scroll sideways (w)" : "Fold long lines to fit the width (w)" }))
       .child(button(t, "unread-only", this.unreadOnly ? "Show all" : "Unread only", (_e, cx) => { this.unreadOnly = !this.unreadOnly; cx.notify(); },
         { kind: "ghost", small: true, tooltip: this.unreadOnly ? "List every step again (u)" : "List and step through only the steps not read yet (u)" }))
       .child(div().flex_1())

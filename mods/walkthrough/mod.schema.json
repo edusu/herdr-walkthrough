@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Walkthrough mod.json",
+  "description": "What Herdr reads from Walkthrough's mod.json, and the settings it takes.",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string", "description": "This file's schema, for editors." },
+    "version": { "type": "string", "description": "The mod's version." },
+    "title": { "type": "string", "description": "The mod's name, as Herdr shows it." },
+    "place": { "enum": ["left", "right", "top", "bottom", "none"], "description": "Where Herdr first docks the mod." },
+    "overlay": { "type": "object", "description": "How mod.open shows it." },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lines": {
+          "title": "Long lines",
+          "description": "How code lines wider than the dialog start: scrolled sideways or wrapped to fit. The Wrap lines button and w switch it while reading.",
+          "type": "string",
+          "enum": ["scroll", "wrap"],
+          "x-labels": { "scroll": "Scroll", "wrap": "Wrap" },
+          "default": "scroll"
+        }
+      }
+    }
+  }
+}
