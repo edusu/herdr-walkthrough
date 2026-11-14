@@ -3,7 +3,7 @@
 
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, VirtualListScrollHandle } from "gpui-base";
-import { spaces, panes, focused, agents, theme, props, closeOverlay, hc, exec, nextCommand, settings, shared, setShared, watchFolder, readTextFile, appHome } from "herdr";
+import { spaces, panes, focused, agents, theme, props, closeOverlay, hc, exec, nextCommand, settings, shared, setShared, watchFolder, readTextFile, appHome, run } from "herdr";
 import { SCOPES, repoAt, currentHead, defaultBase, baseChoices, recentCommits, pullRequests, sourceKey, commitMessage, taskSince } from "./lib/sources.js";
 import { overlay, fileTotals, overlayAsks, asksOf } from "./lib/walkthrough.js";
 import { TASK_MODES, taskChoice, resolveTask, taskKey, taskCacheKey, clip, MAX_TASK_CHARS } from "./lib/task.js";
@@ -74,9 +74,10 @@ export class Walkthrough {
     this.folder = p.folder ?? here.folder;
     this.space = here.space;
     this.remote = Boolean(here.space?.machine);
-    this.from = here.terminal; // the terminal it was opened over: comments go to its agent first
+    this.from = p.from ?? here.terminal; // the terminal it was opened over: comments go to its agent first
     this.inDialog = Boolean(p.overlay);
-    this.tab = (p.pane && panes().find((x) => x.pane === p.pane)?.tab) || focused()?.tab || null; // a pane watches this tab's agents
+    // A copy opened as its own tab gets the tab it came from: that tab has the agents to watch.
+    this.tab = p.tab || (p.pane && panes().find((x) => x.pane === p.pane)?.tab) || focused()?.tab || null; // a pane watches this tab's agents
     const saved = prefs();
     this.scope = SCOPES.some((s) => s.key === p.scope) ? p.scope : SCOPES.some((s) => s.key === saved.scope) ? saved.scope : "uncommitted";
     this.model = MODELS.some((m) => m.key === saved.model) ? saved.model : DEFAULT_MODEL;
@@ -760,7 +761,18 @@ export class Walkthrough {
       .child(div().font_semibold().text_size(13.5).child("Walkthrough"))
       .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.dim)
         .child(r ? `${r.name}${r.branch ? `   ⎇ ${r.branch}` : "   (detached)"}` : this.folder ?? ""))
-      .when(inDialog, (el) => el.child(button(t, "close", "Esc", () => closeOverlay(props().overlay), { kind: "ghost", small: true })));
+      .when(inDialog, (el) => el
+        .child(button(t, "as-pane", "Open as pane", () => this.reopen("pane"), { kind: "ghost", small: true, tooltip: "Keep it beside the agent" }))
+        .child(button(t, "as-tab", "Open as tab", () => this.reopen("tab"), { kind: "ghost", small: true, tooltip: "Give it a tab of its own" }))
+        .child(button(t, "close", "Esc", () => closeOverlay(props().overlay), { kind: "ghost", small: true })));
+  }
+
+  /** Closes the dialog and opens the same walkthrough as a pane beside it, or as its own tab. */
+  reopen(where) {
+    const p = { folder: this.folder, scope: this.scope, tab: this.tab, from: this.from };
+    if (where === "tab") run("tab.new", { name: "Walkthrough", space: this.space?.id, mod: "walkthrough", props: p });
+    else run("pane.split", { direction: "right", mod: "walkthrough", props: p });
+    closeOverlay(props().overlay);
   }
 
   toolbar(t) {

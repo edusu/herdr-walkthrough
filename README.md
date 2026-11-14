@@ -124,7 +124,9 @@ says *where* a request shows up, never whether it's done well.
 
 </details>
 
-To keep it beside an agent instead of over it, open it as a pane:
+To keep it beside an agent instead of over it, click **Open as pane** (or **Open as tab**) in
+the dialog's header. The copy keeps the folder, the scope, and the tab and agent it was opened
+over, so it still watches that tab's agents. From the command line:
 
 ```sh
 herdr-app do pane.split --direction right --mod walkthrough --props '{"scope":"branch"}'
