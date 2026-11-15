@@ -1,1 +1,1 @@
-{ "global": { "cmd-shift-k": "mod.open:walkthrough" } }
+{ "global": { "cmd-shift-e": "mod.open:walkthrough" } }

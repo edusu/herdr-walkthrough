@@ -313,7 +313,7 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
 - Model, language, scope, Auto and each repository's base are remembered in
   `shared("walkthrough.prefs")`. The first language is the system's (`defaults read -g
   AppleLanguages`, else `$LANG`).
-- Keys from `keys.json`: `cmd-shift-k` → `mod.open:walkthrough`. Mod commands:
+- Keys from `keys.json`: `cmd-shift-e` → `mod.open:walkthrough`. Mod commands:
   `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.task` (opens the task editor). In the view, `x`
   marks the step read or unread, `u` toggles Unread only and `t` opens the task page.
 

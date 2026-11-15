@@ -19,7 +19,7 @@ You need the **Herdr desktop app 0.1.9+**, **git**, and **Claude Code** (`claude
 1. **Install.** In Herdr, ask your agent:
    *"Add the mod github.com/dmazlum/herdr-walkthrough"*. It's also listed at
    [herdr.dev/mods](https://herdr.dev/mods). To do it by hand, see [Install by hand](#install-by-hand).
-2. **Open it.** Focus a terminal in a git repository and press **⌘⇧K**.
+2. **Open it.** Focus a terminal in a git repository and press **⌘⇧E**.
 3. **Pick what to read** (Uncommitted, Branch, a Pull request, the agent's Last turn…)
    and press **Generate**. A small change costs about $0.002 with Haiku.
 
@@ -104,7 +104,7 @@ says *where* a request shows up, never whether it's done well.
 
 | Key | What it does |
 | --- | --- |
-| **⌘⇧K** | Open the walkthrough of the focused terminal's repository |
+| **⌘⇧E** | Open the walkthrough of the focused terminal's repository |
 | **←** **→** (or **j** **k**) | Previous / next step; moving on marks a step read |
 | **x** | Mark the step read or unread |
 | **u** | Unread only: step through only what you haven't read |
@@ -226,7 +226,7 @@ cp -R herdr-walkthrough/mods/walkthrough ~/.config/herdr-app/mods/
 herdr-app check ~/.config/herdr-app/mods/walkthrough
 ```
 
-Then merge [`keys.json`](keys.json) into `~/.config/herdr-app/keys.json` for **⌘⇧K**.
+Then merge [`keys.json`](keys.json) into `~/.config/herdr-app/keys.json` for **⌘⇧E**.
 (Asking your agent does all of this for you: it follows [`RECIPE.md`](RECIPE.md).)
 
 ## Updating
