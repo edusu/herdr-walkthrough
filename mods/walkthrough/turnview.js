@@ -8,6 +8,7 @@ import { agents, notify, settings, watchFolder } from "herdr";
 import { turnSource, pickTurn, keepTurn, lastFinished, isOpen, autoWritable, firstLine, ago, hookSettings, HOOK_WAIT } from "./lib/turns.js";
 import { turnsFolder, listTurns, closeTurn, readDiff, readPreferences, keyFor, hasEntry, jobOf, preparePrompt, fits, startJob, finished, finishJob, copyText, hookScript } from "./engine.js";
 import { button, formatElapsed } from "./ui.js";
+import { TEXT, grow } from "./lib/scale.js";
 
 // Written without a click only by the cheapest model, and only for a change small enough to be cheap.
 export const AUTO_MODEL = "haiku";
@@ -179,17 +180,17 @@ export function hookHelp(v, t) {
   const snippet = hookSettings(hookScript(), { compact: true });
   const font = settings().font_family ?? "JetBrains Mono";
   const step = (n, title, ...body) => h_flex().w_full().px(14).py(12).gap(12).items_start().when(n > 1, (e) => e.border_t(1).border_color(t.border))
-    .child(div().flex_none().size(22).rounded(11).bg(t.accent + "26").flex().items_center().justify_center().text_size(11.5).font_semibold().text_color(t.accent).child(String(n)))
-    .child(v_flex().flex_1().min_w(0).gap(6).child(div().text_size(13).font_semibold().child(title)).children(body));
-  const small = (text) => div().text_size(12).line_height(1.5).text_color(t.muted).child(text);
+    .child(div().flex_none().size(grow(22)).rounded(grow(11)).bg(t.accent + "26").flex().items_center().justify_center().text_size(TEXT.note).font_semibold().text_color(t.accent).child(String(n)))
+    .child(v_flex().flex_1().min_w(0).gap(6).child(div().text_size(TEXT.base).font_semibold().child(title)).children(body));
+  const small = (text) => div().text_size(TEXT.body).line_height(1.5).text_color(t.muted).child(text);
   return v_flex().id("turn-help").size_full().overflow_y_scrollbar().items_center().p(28)
     .child(v_flex().w_full().max_w(620).gap(12)
-      .child(div().text_size(18).font_semibold().child("Record the agent's turns"))
-      .child(div().text_size(13).line_height(1.5).text_color(t.muted).child("Last turn shows exactly what an agent changed while answering one prompt. Two Claude Code hooks take a snapshot of your working tree, outside the repository's .git, when you send a prompt and when the agent stops."))
+      .child(div().text_size(TEXT.page).font_semibold().child("Record the agent's turns"))
+      .child(div().text_size(TEXT.base).line_height(1.5).text_color(t.muted).child("Last turn shows exactly what an agent changed while answering one prompt. Two Claude Code hooks take a snapshot of your working tree, outside the repository's .git, when you send a prompt and when the agent stops."))
       .child(v_flex().w_full().rounded(10).border_1().border_color(t.border)
         .child(step(1, "Copy the two hooks",
           // A line longer than the box wraps under its own indent instead of spilling out of it.
-          v_flex().w_full().min_w(0).p(10).rounded(8).border_1().border_color(t.border).bg(t.raised).font_family(font).text_size(11)
+          v_flex().w_full().min_w(0).p(10).rounded(8).border_1().border_color(t.border).bg(t.raised).font_family(font).text_size(TEXT.small)
             .children(snippet.split("\n").map((line) => {
               const indent = /^ */.exec(line)[0].length;
               return div().w_full().min_w(0).pl(indent * 7).child(line.trimStart() || " ");
@@ -199,7 +200,7 @@ export function hookHelp(v, t) {
               try { await copyText(snippet); v.flash("✓ Copied"); } catch (e) { v.flash(`Couldn't copy: ${String(e?.message ?? e)}`); }
               cx.notify();
             }), { kind: "solid", small: true }))
-            .when(Boolean(v.sent), (e) => e.child(div().text_size(11.5).text_color(v.sent.startsWith("✓") ? t.ansi2 : t.dim).child(v.sent)))))
+            .when(Boolean(v.sent), (e) => e.child(div().text_size(TEXT.note).text_color(v.sent.startsWith("✓") ? t.ansi2 : t.dim).child(v.sent)))))
         .child(step(2, "Add them to ~/.claude/settings.json", small("Next to any hooks you already have. The walkthrough never edits your settings itself.")))
         .child(step(3, "Send your agent a prompt", small("Turns are recorded from then on. Snapshots go to ~/.herdr/walkthrough/turns/; the newest 20 per repository are kept.")))));
 }

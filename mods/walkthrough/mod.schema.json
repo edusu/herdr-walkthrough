@@ -21,6 +21,27 @@
           "x-labels": { "scroll": "Scroll", "wrap": "Wrap" },
           "default": "scroll"
         },
+        "font_size": {
+          "title": "Font size",
+          "description": "Size of this mod's main text in px; smaller and larger text keep their proportion to it.",
+          "type": "number",
+          "minimum": 9,
+          "maximum": 24,
+          "multipleOf": 0.5,
+          "x-step": 0.5,
+          "x-unit": "px",
+          "default": 13
+        },
+        "scale": {
+          "title": "Scale",
+          "description": "Scales this mod's icons, buttons and row heights. 1 is Herdr's own size.",
+          "type": "number",
+          "minimum": 0.8,
+          "maximum": 1.6,
+          "multipleOf": 0.05,
+          "x-step": 0.05,
+          "default": 1
+        },
         "notion": {
           "title": "Notion",
           "description": "Where Send to Notion creates pages. Empty values fall back to the notion-notes mod's settings (its ntn and first parent), then to ntn on the PATH and a private page.",

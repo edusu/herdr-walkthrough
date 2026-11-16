@@ -130,6 +130,8 @@ says *where* a request shows up, never whether it's done well.
 | Last turn → **⚡ Auto** | On (default): write the last turn's walkthrough without a click. One click turns it off: only on Generate |
 | `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.wrap`, `.task`, `.ask` | Generate, cancel, move, Copy as Markdown, Unread only, wrap lines, write your own task and ask about the step |
 | `settings.lines` in `mod.json` | `"scroll"` (default) or `"wrap"`: how long lines start. [Better Config](https://github.com/munza/herdr-mods/tree/main/better-config) shows it |
+| `settings.font_size` in `mod.json` | The main text's size in px, 9 to 24 (default 13); the rest of the text keeps its proportion to it |
+| `settings.scale` in `mod.json` | 0.8 to 1.6 (default 1): icons, buttons and row heights. Rows holding text also grow with `font_size` |
 | `settings.notion` in `mod.json` | `{ "ntn": "", "parent": "" }`: the `ntn` to run and the parent of new pages (`page:<id>`, `database:<id>` or `data-source:<id>`). Empty values take the notion-notes mod's `ntn` and first parent, else `ntn` and a private page |
 
 </details>
