@@ -51,7 +51,7 @@ click? Add the two [Last turn hooks](#last-turn).
 | **Uncommitted** | Everything not committed yet: staged, unstaged and new files |
 | **Staged** / **Unstaged** | One half of it |
 | **Branch** | Your branch against its base, without what the base gained since |
-| **Commit** | One commit |
+| **Commit** | One commit, or, with **from** set to an older commit, every commit after that one up to the picked one |
 | **Pull request** | An open pull request on GitHub, as GitHub shows it (your branch's is picked for you) |
 | **Last turn** | Only what an agent changed while answering one prompt: not your edits before it, not the ones after |
 
@@ -62,7 +62,7 @@ A walkthrough opens on the **task**: each thing that was asked for, marked
 Each step says which request it serves, and steps no request asked for are listed too.
 
 You don't have to type the task. It's found for you: the Last turn's prompt, the pull
-request's description, the commit's message, or the prompts you sent to Claude Code since
+request's description, the commit's message (a range's commit messages), or the prompts you sent to Claude Code since
 the last commit. You can also write your own, or turn it off, from the **Matched against** menu. It
 says *where* a request shows up, never whether it's done well.
 
@@ -269,6 +269,7 @@ If the mod was renamed when it was added (a name clash), replace the renamed fol
   diff doesn't hold, or under another name.
 - **Last turn** records Claude Code's turns only, and writes walkthroughs without a click
   only while the walkthrough is open.
+- **Commit** and its **from** offer the latest 40 commits on HEAD; an older one can't be picked.
 - **Comments** are kept while the walkthrough is open, and sent with Enter.
 - **Read marks** are saved once a second: one made in the last second before Herdr quits
   can be lost. A step counts as changed since you read it when part of it was read, or when

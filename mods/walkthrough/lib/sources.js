@@ -342,6 +342,12 @@ export async function recentCommits(exec, top, count = 40) {
   });
 }
 
+/** The commits listed after the picked one: older on HEAD, so a range can start at any of them. */
+export function olderCommits(commits, commit) {
+  const i = commit ? commits.findIndex((c) => c.hash === commit.hash) : -1;
+  return i < 0 ? [] : commits.slice(i + 1);
+}
+
 /** Runs the GitHub CLI; its failures come back as one readable sentence. */
 async function gh(exec, top, args) {
   let r;

@@ -6,7 +6,7 @@ import { execFile } from "node:child_process";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { repoAt, currentHead, loadSections, defaultBase, baseChoices, recentCommits, sourceKey, describe, MAX_UNTRACKED_BYTES, pullRequests, ghError, turnsKey, rangeMessages } from "../mods/walkthrough/lib/sources.js";
+import { repoAt, currentHead, loadSections, defaultBase, baseChoices, recentCommits, sourceKey, describe, MAX_UNTRACKED_BYTES, pullRequests, ghError, turnsKey, rangeMessages, olderCommits } from "../mods/walkthrough/lib/sources.js";
 import { buildDigest } from "../mods/walkthrough/lib/digest.js";
 import { jobScript, readOutcome } from "../mods/walkthrough/lib/job.js";
 import { chmodSync, readFileSync, existsSync, utimesSync } from "node:fs";
@@ -134,6 +134,14 @@ test("a range: the commits after from up to to, refused when from is not an ance
   // The merge's generated subject says nothing, so it drops out; the side branch's commit stays.
   assert.deepEqual(await rangeMessages(exec, repo, one, three), ["Two\n\nWith a body.", "Side", "Three"]);
   rmSync(repo, { recursive: true, force: true });
+});
+
+test('the "from" picker offers the commits older than the picked one', () => {
+  const commits = [{ hash: "c" }, { hash: "b" }, { hash: "a" }];
+  assert.deepEqual(olderCommits(commits, { hash: "b" }), [{ hash: "a" }]);
+  assert.deepEqual(olderCommits(commits, { hash: "a" }), []);
+  assert.deepEqual(olderCommits(commits, { hash: "x" }), []);
+  assert.deepEqual(olderCommits(commits, null), []);
 });
 
 test("a branch against its base: committed and uncommitted work, not the base's", async () => {

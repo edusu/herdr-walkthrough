@@ -4,7 +4,7 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, VirtualListScrollHandle } from "gpui-base";
 import { spaces, panes, focused, agents, theme, props, closeOverlay, hc, exec, nextCommand, settings, shared, setShared, watchFolder, readTextFile, appHome, run } from "herdr";
-import { SCOPES, repoAt, currentHead, defaultBase, baseChoices, recentCommits, pullRequests, sourceKey, commitMessage, taskSince } from "./lib/sources.js";
+import { SCOPES, repoAt, currentHead, defaultBase, baseChoices, recentCommits, olderCommits, pullRequests, sourceKey, commitMessage, rangeMessages, taskSince } from "./lib/sources.js";
 import { overlay, fileTotals, overlayAsks, asksOf } from "./lib/walkthrough.js";
 import { TASK_MODES, taskChoice, resolveTask, taskKey, taskCacheKey, clip, MAX_TASK_CHARS } from "./lib/task.js";
 import { numberLines, hunkLabel, numberDigits } from "./lib/hunks.js";
@@ -87,6 +87,7 @@ export class Walkthrough {
     this.bases = [];
     this.commit = null;
     this.commits = [];
+    this.since = null; // the Commit tab's "from": a commit of this.commits older than this.commit, or null for its parent
     this.pr = null;
     this.prs = null; // null until listed
     this.prError = null;
@@ -108,7 +109,7 @@ export class Walkthrough {
     this.view = null;
     this.task = null; // the task the shown source is matched against (lib/task.js), or null
     this.taskView = null; // the shown walkthrough's requests over the diff (overlayAsks), null when it has none
-    this.commitTexts = new Map(); // commit messages read, by hash
+    this.commitTexts = new Map(); // commit messages read, by hash (a range's, by its source key)
     this.promptMemo = null; // { since, at, list }: prompts read from transcripts, briefly kept
     this.editingTask = false;
     this.showTaskText = false;
@@ -130,7 +131,7 @@ export class Walkthrough {
     this.comments = [];
     this.target = null; // { sk, scope, path, line, kind, code }: the line a comment is being written on
     this.agentTo = null;
-    this.picking = null; // "base" | "commit" | "pr" | "model" | "language" | "agent"
+    this.picking = null; // "base" | "commit" | "since" | "pr" | "model" | "language" | "agent"
     this.menuIndex = 0; // the highlighted row of the open picker, moved by ↑ ↓ and chosen by Enter
     this.menuScroll = VirtualListScrollHandle.new();
     this.sent = null;
@@ -193,6 +194,7 @@ export class Walkthrough {
   /** The source the toolbar describes, or null while one still has to be picked. */
   source() {
     if (this.scope === "branch") return this.base ? { kind: "branch", base: this.base, head: this.head ?? this.repo?.branch ?? "HEAD" } : null;
+    if (this.scope === "commit" && this.commit && this.since) return { kind: "range", from: this.since.hash, to: this.commit.hash, fromSubject: this.since.subject, toSubject: this.commit.subject, count: olderCommits(this.commits, this.commit).findIndex((c) => c.hash === this.since.hash) + 1 };
     if (this.scope === "commit") return this.commit ? { kind: "commit", hash: this.commit.hash, subject: this.commit.subject } : null;
     if (this.scope === "pr") return this.pr ? { kind: "pr", number: this.pr.number, title: this.pr.title, head: this.pr.head, base: this.pr.base } : null;
     if (this.scope === "turn") return this.turn ? turnSource(this.turn) : null;
@@ -229,15 +231,17 @@ export class Walkthrough {
       switch (source.kind) {
         case "turn": return resolveTask({ source, turn: this.turns.find((t) => t.id === source.id) ?? null, turns: this.turns });
         case "pr": return resolveTask({ source, pr: (this.prs ?? []).find((p) => p.number === source.number) ?? null });
-        case "commit":
-          if (!this.commitTexts.has(source.hash)) {
+        case "commit": case "range": {
+          const id = source.kind === "commit" ? source.hash : sourceKey(source);
+          if (!this.commitTexts.has(id)) {
             // null: git couldn't read it this time; it is asked again on the next read, not remembered as no message.
-            const message = await commitMessage(exec, repo.top, source.hash);
+            const message = source.kind === "commit" ? await commitMessage(exec, repo.top, source.hash) : await rangeMessages(exec, repo.top, source.from, source.to);
             if (message === null) return null;
             if (this.commitTexts.size >= 200) this.commitTexts.clear();
-            this.commitTexts.set(source.hash, message);
+            this.commitTexts.set(id, message);
           }
-          return resolveTask({ source, commit: this.commitTexts.get(source.hash) });
+          return resolveTask(source.kind === "commit" ? { source, commit: this.commitTexts.get(id) } : { source, messages: this.commitTexts.get(id) });
+        }
         default: {
           const { since, label } = await taskSince(exec, repo.top, source);
           return resolveTask({ source, prompts: await this.promptsSince(since), since: label });
@@ -608,7 +612,9 @@ export class Walkthrough {
     if (kind === "model") { this.model = value; savePrefs({ model: value }); }
     if (kind === "language") { this.language = value; savePrefs({ language: value }); }
     if (kind === "base") { this.base = value; savePrefs({ bases: { ...(prefs().bases ?? {}), [this.repo.top]: value } }); }
-    if (kind === "commit") this.commit = value;
+    // A "from" that is no longer older than the picked commit would make no range: back to its parent.
+    if (kind === "commit") { this.commit = value; if (this.since && !olderCommits(this.commits, value).some((c) => c.hash === this.since.hash)) this.since = null; }
+    if (kind === "since") this.since = value;
     if (kind === "pr") { this.pr = value; this.confirmPost = false; }
     if (kind === "turn") chooseTurn(this, value);
     if (kind === "agent") { this.agentTo = value; cx.notify(); return; }
@@ -800,6 +806,7 @@ export class Walkthrough {
     const which = h_flex().flex_1().min_w(0).gap(8).items_center()
       .when(this.scope === "branch", (el) => el.child(label("vs")).child(picker(t, "pick-base", this.base ?? "Pick a base", open("base"))))
       .when(this.scope === "commit", (el) => el.child(picker(t, "pick-commit", this.commit ? `${this.commit.short} ${this.commit.subject}` : "Pick a commit", open("commit"))))
+      .when(this.scope === "commit" && Boolean(this.commit), (el) => el.child(label("from")).child(picker(t, "pick-since", this.since ? `${this.since.short} ${this.since.subject}` : "its parent", open("since"))))
       .when(this.scope === "pr" && Boolean(this.prs?.length), (el) => el.child(picker(t, "pick-pr", this.pr ? `#${this.pr.number} ${this.pr.title}` : "Pick a pull request", open("pr"))))
       .when(this.scope === "turn" && this.turns.length > 0, (el) => el.child(label("Turn")).child(picker(t, "pick-turn", turnLabel(this), open("turn")))
         .child(button(t, "toggle-auto", auto ? "⚡ Auto: on" : "Auto: off", (_e, cx) => { this.choose("auto", auto ? "off" : DEFAULT_AUTO, cx); }, {
@@ -826,6 +833,8 @@ export class Walkthrough {
     switch (kind) {
       case "base": return { side: "left", width: 280, items: this.bases.map((b) => ({ label: b, value: b, selected: b === this.base })) };
       case "commit": return { side: "left", width: 460, items: this.commits.map((c) => ({ label: `${c.short}  ${c.subject}`, hint: `${c.author} · ${c.when}`, value: c, selected: c.hash === this.commit?.hash })) };
+      case "since": return { side: "left", width: 460, items: [{ label: "its parent", hint: "The picked commit alone", value: null, selected: !this.since },
+        ...olderCommits(this.commits, this.commit).map((c) => ({ label: `${c.short}  ${c.subject}`, hint: `${c.author} · ${c.when}`, value: c, selected: c.hash === this.since?.hash }))] };
       case "pr": return { side: "left", width: 480, items: (this.prs ?? []).map((p) => ({
         label: `#${p.number}  ${p.title}`, hint: `${p.author} · ${p.head} → ${p.base}${p.draft ? " · draft" : ""}${p.current ? " · this branch" : ""}`, value: p, selected: p.number === this.pr?.number })) };
       case "turn": return { side: "left", width: 480, items: turnItems(this) };

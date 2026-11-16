@@ -26,20 +26,23 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
      **Generate** (solid) with nothing exact on screen, **Regenerate** (outline) over an
      exact one, **Cancel** while one is running.
    - below, left: Branch has "vs" (11px `dim`) and a dropdown of the base; Commit a
-     dropdown of the commit (`short subject`); Pull request, once some are listed, a
+     dropdown of the commit (`short subject`), then "from" and a dropdown of where it starts:
+     "its parent" (the default, hint "The picked commit alone") and the commits listed after
+     the picked one, which make it a range; picking a commit the "from" isn't older than puts
+     "from" back to its parent; Pull request, once some are listed, a
      dropdown of the open pull requests (`#12 title`, hint "author · head → base",
      "· draft", "· this branch"); Last turn, once a turn is recorded, "Turn" and a dropdown
      of the turns (the prompt's first line, hint "5 min ago · took 1:20 · t3", "still
      running", "interrupted" or "no Stop recorded, ended when seen idle"), then a ghost
      **⚡ Auto: on** / **Auto: off** that switches Auto with one click (tooltip: what it does).
    - below, right: once a diff is read, "Matched against" (11px `dim`) and the task dropdown
-     ("◎ prompt", "◎ PR description", "◎ commit message", "◎ 3 prompts", "◎ yours",
+     ("◎ prompt", "◎ PR description", "◎ commit message", "◎ 3 commit messages", "◎ 3 prompts", "◎ yours",
      "nothing found", "nothing (off)"; rows Found (hint: where it came from, or "Nothing
      found for this change"), Your own… (hint: its first line) and Off); then the model
      (Haiku, Sonnet, Opus) and language (its own name: Türkçe, Deutsch …) dropdowns as ghost
      buttons in one bordered group with a 1px divider.
    - Dropdowns open a menu (8px radius, `popover`, `border`, shadow) under the toolbar,
-     left-aligned for base and commit, right-aligned for model and language; the chosen row
+     left-aligned for base, commit and from, right-aligned for model and language; the chosen row
      ticked in `accent` and on `selected`; a click outside closes it. The menu is a
      `v_virtual_list` (30px rows, 44px with a hint line, at most 360px tall, a `Scrollbar`
      beside it) so the wheel scrolls it; ↑ ↓ move a highlight (`hover`) that stays in view
@@ -184,7 +187,7 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
   folder; `props().folder` and `props().scope` override. Nothing is generated on open.
 - The diff is re-read when files change (`watchFolder` on the repo marks it dirty unless
   every changed path is in `node_modules`, in `.git` other than its index, HEAD and refs,
-  or ignored by `git check-ignore`; a 1s tick re-reads) and when the scope, base, commit, model or language changes. A newer read
+  or ignored by `git check-ignore`; a 1s tick re-reads) and when the scope, base, commit, its "from", model or language changes. A newer read
   wins over an older one still running.
 - The walkthrough shown is the one cached for exactly this diff, model and language; else
   the one shown last for this repository and scope, with the banners above. Steps whose
@@ -279,7 +282,7 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
   their output dropped, each `uuid` once), read at most every 5 s; with none there, the recorded turns' prompts since
   then. Slash commands alone, "[Request interrupted …" and empty prompts are no task. At
   most 6,000 characters (2,000 per message; past that the first and the newest that fit).
-  Your own: per repository and source in the prefs (`tasks`, the newest 100); the text is kept while Found or Off is picked. Off: none. A commit message git couldn't read is asked again on the next read.
+  Your own: per repository and source in the prefs (`tasks`, the newest 100); the text is kept while Found or Off is picked. Off: none. A commit's or range's messages git couldn't read are asked again on the next read; read ones are kept for the session (a range's under its source key).
   Reading a task never fails the walkthrough: one that can't be read is no task.
 - With a task, the system prompt gets the task rules and the prompt a `<task>` block (and
   `<earlier>` for context) before the digest, with every `<` that starts a `task` or
@@ -516,6 +519,8 @@ without copying again). It prints nothing and always exits 0.
 - Branch on a feature branch defaults to `main` and includes its commits, its uncommitted
   edits and its new files, but not commits made on `main` since.
 - Commit on the root commit shows every file as added.
+- Commit, then an older "from": the range's files, "◎ N commit messages", Generate works;
+  "its parent" again shows the single commit's cached walkthrough.
 - Clicking a line, typing and Enter adds a comment under it; Send pastes it into the
   chosen agent.
 - With the hooks added, a prompt that edits a file and adds one shows on Last turn as
