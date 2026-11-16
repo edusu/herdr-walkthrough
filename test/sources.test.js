@@ -6,7 +6,7 @@ import { execFile } from "node:child_process";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { repoAt, currentHead, loadSections, defaultBase, baseChoices, recentCommits, sourceKey, describe, MAX_UNTRACKED_BYTES, pullRequests, ghError, turnsKey } from "../mods/walkthrough/lib/sources.js";
+import { repoAt, currentHead, loadSections, defaultBase, baseChoices, recentCommits, sourceKey, describe, MAX_UNTRACKED_BYTES, pullRequests, ghError, turnsKey, rangeMessages } from "../mods/walkthrough/lib/sources.js";
 import { buildDigest } from "../mods/walkthrough/lib/digest.js";
 import { jobScript, readOutcome } from "../mods/walkthrough/lib/job.js";
 import { chmodSync, readFileSync, existsSync, utimesSync } from "node:fs";
@@ -110,6 +110,32 @@ test("a commit against its parent, and the root commit against nothing", async (
   assert.deepEqual((await paths({ kind: "commit", hash: first })).files, ["commit:a.txt:added", "commit:b.txt:added"]);
 });
 
+test("a range: the commits after from up to to, refused when from is not an ancestor; its messages oldest first", async () => {
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), "walkthrough-range-")));
+  await sh(repo, "init", "-q", "-b", "main");
+  await sh(repo, "config", "user.email", "t@t");
+  await sh(repo, "config", "user.name", "t");
+  const commit = async (file, message) => {
+    writeFileSync(join(repo, file), `${file}\n`);
+    await sh(repo, "add", "-A");
+    await sh(repo, "commit", "-qm", message);
+    return sh(repo, "rev-parse", "HEAD");
+  };
+  const one = await commit("one.txt", "One");
+  await commit("two.txt", "Two\n\nWith a body.\n\nSigned-off-by: t <t@t>");
+  await sh(repo, "checkout", "-q", "-b", "side");
+  await commit("side.txt", "Side");
+  await sh(repo, "checkout", "-q", "main");
+  await sh(repo, "merge", "-q", "--no-ff", "--no-edit", "side");
+  const three = await commit("three.txt", "Three");
+  const { sections } = await loadSections(exec, repo, { kind: "range", from: one, to: three });
+  assert.deepEqual(buildDigest(sections).files.map((f) => `${f.scope}:${f.path}:${f.status}`), ["range:side.txt:added", "range:three.txt:added", "range:two.txt:added"]);
+  await assert.rejects(loadSections(exec, repo, { kind: "range", from: three, to: one }), /not an ancestor/);
+  // The merge's generated subject says nothing, so it drops out; the side branch's commit stays.
+  assert.deepEqual(await rangeMessages(exec, repo, one, three), ["Two\n\nWith a body.", "Side", "Three"]);
+  rmSync(repo, { recursive: true, force: true });
+});
+
 test("a branch against its base: committed and uncommitted work, not the base's", async () => {
   await sh(dir, "checkout", "-q", "-b", "feature");
   writeFileSync(join(dir, "f.txt"), "feature\n");
@@ -186,6 +212,10 @@ test("source keys and descriptions", () => {
   assert.equal(sourceKey({ kind: "commit", hash: "abc" }), "commit:abc");
   assert.match(describe({ kind: "branch", base: "main" }, { branch: "feature" }), /branch "feature" adds to "main"/);
   assert.match(describe({ kind: "commit", hash: "0123456789abcdef", subject: "Fix" }, null), /Commit 0123456789ab \("Fix"\)/);
+  const range = { kind: "range", from: "0123456789abcdef", to: "fedcba9876543210", fromSubject: "Start", toSubject: "End" };
+  assert.equal(sourceKey(range), "range:0123456789abcdef..fedcba9876543210");
+  assert.equal(describe({ ...range, count: 3 }, null), 'Commits 0123456789ab..fedcba987654 (3 commits), from "Start" to "End".');
+  assert.equal(describe({ kind: "range", from: range.from, to: range.to }, null), "Commits 0123456789ab..fedcba987654.");
   // A pull request is one walkthrough whatever its head: when it moves on, the last one shows as outdated.
   assert.equal(sourceKey({ kind: "pr", number: 12, title: "T" }), "pr:12");
   assert.match(describe({ kind: "pr", number: 12, title: "Fix it", head: "fix", base: "main" }, null), /Pull request #12 \("Fix it"\), "fix" into "main"/);

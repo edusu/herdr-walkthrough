@@ -7,6 +7,7 @@
 // unstaged one.
 
 import { firstLine } from "./turns.js";
+import { cleanCommitMessage, MAX_MESSAGES } from "./task.js";
 
 // Reads write nothing under .git: no index refresh, no lock, no fsmonitor.
 const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "core.quotePath=false", "-c", "diff.autoRefreshIndex=false"];
@@ -63,6 +64,7 @@ export function sourceKey(source) {
   // The branch being read is part of it: two branches against one base are two walkthroughs.
   if (source.kind === "branch") return `branch:${source.base}...${source.head ?? "HEAD"}`;
   if (source.kind === "commit") return `commit:${source.hash}`;
+  if (source.kind === "range") return `range:${source.from}..${source.to}`;
   // Not pinned to the head commit: when the pull request moves on, its last walkthrough is shown as outdated.
   if (source.kind === "pr") return `pr:${source.number}`;
   if (source.kind === "turn") return `turn:${source.id}`;
@@ -77,6 +79,7 @@ export function describe(source, repo) {
     case "unstaged": return "Unstaged changes in the working tree, with new files.";
     case "branch": return `Everything branch "${source.head ?? repo?.branch ?? "HEAD"}" adds to "${source.base}", committed or not. Work that came in from ${source.base} is left out.`;
     case "commit": return `Commit ${source.hash.slice(0, 12)}${source.subject ? ` ("${source.subject}")` : ""}, against its first parent.`;
+    case "range": return `Commits ${source.from.slice(0, 12)}..${source.to.slice(0, 12)}${source.count ? ` (${source.count} commit${source.count === 1 ? "" : "s"})` : ""}${source.fromSubject && source.toSubject ? `, from "${source.fromSubject}" to "${source.toSubject}"` : ""}.`;
     case "turn": return `One turn of a coding agent: what changed in the working tree while it answered the prompt "${firstLine(source.prompt, 160)}"${source.endTree ? "" : " (still running: read up to now)"}.`;
     case "pr": return `Pull request #${source.number}${source.title ? ` ("${source.title}")` : ""}${source.head && source.base ? `, "${source.head}" into "${source.base}"` : ""}, as GitHub shows its changes.`;
     default: return "Local changes.";
@@ -265,6 +268,13 @@ export async function loadSections(exec, top, source) {
       add("commit", await must(exec, top, ["diff", ...DIFF, parents[1] ?? EMPTY_TREE, source.hash]));
       break;
     }
+    case "range": {
+      const ancestor = await git(exec, top, ["merge-base", "--is-ancestor", source.from, source.to]);
+      if (ancestor.code === 1) throw new Error("The \"from\" commit is not an ancestor of the commit picked, so there is no range between them.");
+      if (!ancestor.ok) throw new Error(ancestor.err || "git merge-base failed");
+      add("range", await must(exec, top, ["diff", ...DIFF, source.from, source.to]));
+      break;
+    }
     case "pr":
       add("pr", await gh(exec, top, ["pr", "diff", String(source.number), "--color=never"]));
       break;
@@ -371,6 +381,16 @@ export async function pullRequests(exec, top, branch = null) {
 export async function commitMessage(exec, top, hash) {
   const r = await git(exec, top, ["log", "-1", "--format=%B", hash, "--"]);
   return r.ok ? r.out.trim() : null;
+}
+
+/**
+ * The messages of the commits after `from` up to `to`, oldest first (the
+ * newest MAX_MESSAGES), cleaned as one commit's is; a merge's generated
+ * subject leaves nothing, and drops out. Null when git couldn't read them.
+ */
+export async function rangeMessages(exec, top, from, to) {
+  const r = await git(exec, top, ["log", "-z", "--topo-order", "--reverse", `-n${MAX_MESSAGES}`, "--format=%B", `${from}..${to}`, "--"]);
+  return r.ok ? r.out.split("\0").map(cleanCommitMessage).filter(Boolean) : null;
 }
 
 /**

@@ -153,10 +153,10 @@ export function cleanCommitMessage(message) {
  *
  * @param {{ mode?: string, own?: string, source?: any,
  *   turn?: any, turns?: any[], pr?: { number: number, title?: string, body?: string } | null,
- *   commit?: string | null, prompts?: { at: number, text: string }[] | null, since?: string }} input
+ *   commit?: string | null, messages?: string[] | null, prompts?: { at: number, text: string }[] | null, since?: string }} input
  * @returns {{ from: string, label: string, short: string, about: string, text: string, context: string } | null}
  */
-export function resolveTask({ mode = "auto", own = "", source = null, turn = null, turns = [], pr = null, commit = null, prompts = null, since = "the last commit" } = {}) {
+export function resolveTask({ mode = "auto", own = "", source = null, turn = null, turns = [], pr = null, commit = null, messages = null, prompts = null, since = "the last commit" } = {}) {
   if (mode === "off") return null;
   const task = (from, label, short, about, text, context = "") => {
     const t = clip(text, MAX_TASK_CHARS);
@@ -182,6 +182,12 @@ export function resolveTask({ mode = "auto", own = "", source = null, turn = nul
     }
     case "commit":
       return task("commit", "The commit message", "commit message", "the commit's message", cleanCommitMessage(commit));
+    case "range": {
+      const list = (messages ?? []).filter((m) => m.trim());
+      const n = list.length;
+      return task("commits", `The message${n === 1 ? "" : "s"} of ${n} commit${n === 1 ? "" : "s"}`, `${n} commit message${n === 1 ? "" : "s"}`,
+        "the messages of the commits in this range, oldest first", joinMessages(list.map((text) => ({ text }))));
+    }
     case "uncommitted": case "staged": case "unstaged": case "branch": {
       const list = (prompts ?? []).filter((p) => !isNoise(p.text));
       if (!list.length) return null;

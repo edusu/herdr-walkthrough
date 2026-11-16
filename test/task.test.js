@@ -145,6 +145,11 @@ test("resolveTask: each source's own task, the reader's words, or none", () => {
   assert.deepEqual([commit.from, commit.text], ["commit", "Add retries"]);
   assert.equal(resolveTask({ source: { kind: "commit", hash: "abc" }, commit: "" }), null);
 
+  // A range's messages come cleaned (a merge's generated subject is empty by then), and are numbered oldest first.
+  const range = resolveTask({ source: { kind: "range", from: "a", to: "b" }, messages: ["Add X", "", "Also Y"] });
+  assert.deepEqual([range.from, range.label, range.short, range.text], ["commits", "The messages of 2 commits", "2 commit messages", "Message 1:\nAdd X\n\nMessage 2:\nAlso Y"]);
+  assert.equal(resolveTask({ source: { kind: "range", from: "a", to: "b" }, messages: [] }), null);
+
   const prompts = resolveTask({ source: { kind: "branch", base: "main" }, since: "the branch left main", prompts: [{ at: 1, text: "Add X" }, { at: 2, text: "/clear" }, { at: 3, text: "Also Y" }] });
   assert.equal(prompts.from, "prompts");
   assert.equal(prompts.label, "2 prompts sent to agents since the branch left main");

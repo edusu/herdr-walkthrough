@@ -265,7 +265,9 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
   of its session as context; a pull request's title and body (from the `gh pr list` call,
   which asks for `body` too), HTML comments and anything between `<!-- walkthrough -->` and
   `<!-- /walkthrough -->` left out; a commit's `git log -1 --format=%B`, trailers
-  (Signed-off-by, Co-Authored-By …) and a merge's generated subject left out; for
+  (Signed-off-by, Co-Authored-By …) and a merge's generated subject left out; for a range,
+  `git log -z --topo-order --reverse -n20 --format=%B <from>..<to>`, each message cleaned the
+  same way, empty ones (a merge's) dropped, numbered oldest first; for
   Uncommitted, Staged, Unstaged and Branch, the prompts typed into Claude Code in this
   repository since the last commit's committer time (Branch: the merge base's), numbered,
   oldest first. Those come from `${CLAUDE_CONFIG_DIR:-~/.claude}/projects/<path with every
@@ -338,7 +340,9 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
   diff.autoRefreshIndex=false` and `--no-color --no-ext-diff --no-textconv
   --src-prefix=a/ --dst-prefix=b/ -M`: staged `diff --cached`, unstaged `diff` plus every
   untracked file as `diff --no-index /dev/null <file>`, branch `diff $(merge-base base
-  HEAD)` plus untracked, commit `diff <first parent or empty tree> <hash>`. Base default:
+  HEAD)` plus untracked, commit `diff <first parent or empty tree> <hash>`, range `diff <from>
+  <to>` (scope `range`, key `range:<from>..<to>`) once `merge-base --is-ancestor <from> <to>`
+  holds, else refused with a sentence the empty state shows. Base default:
   `origin/HEAD`, else origin/main, origin/master, main, master, trunk, develop.
 - The job: `~/.herdr/walkthrough/jobs/<place>/` with `system.txt`, `prompt.txt`,
   `schema.json`, `meta.json` (key, model, language, alias → hunk id, deadline) and

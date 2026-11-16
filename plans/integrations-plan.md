@@ -26,7 +26,7 @@ source and props handling, S5 on S4). Part B is other repositories and needs S6 
 
 | Slice | Goal | Done when | Status |
 | --- | --- | --- | --- |
-| S1 | Commit-range source | A `range` source reads `git diff <from> <to>`, has its own key, description and task (the range's commit messages), all covered by tests | Pending |
+| S1 | Commit-range source | A `range` source reads `git diff <from> <to>`, has its own key, description and task (the range's commit messages), all covered by tests | Done |
 | S2 | Range in the Commit tab | The Commit tab has a "from" picker; choosing an older commit walks through everything after it up to the picked commit | Pending |
 | S3 | Ask about a step | A question typed on a step reaches the chosen agent with the step's title, text and files | Pending |
 | S4 | Task from a GitHub issue | A pull request's closing issues, or the issue a branch name points at, can be the task; "Matched against" offers it | Pending |
