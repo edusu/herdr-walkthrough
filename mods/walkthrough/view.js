@@ -99,6 +99,7 @@ export class Walkthrough {
     this.turns = [];
     this.turnPinned = false;
     this.summaryOpen = false; // the sidebar's summary, shown whole
+    this.sidebar = saved.sidebar !== false; // the contents column, until collapsed
     this.auto = AUTO.some((a) => a.key === saved.autoGenerate) ? saved.autoGenerate : DEFAULT_AUTO;
     this.autoTried = new Set(); // turns already considered for a walkthrough without a click
     this.autoWanted = null;
@@ -930,8 +931,17 @@ export class Walkthrough {
         .child(picker(t, "pick-model", modelOf(this.model).name, open("model"), { tooltip: "Model", kind: "ghost" }))
         .child(div().w(1).h(14).bg(t.border))
         .child(picker(t, "pick-language", languageOf(this.language).name, open("language"), { tooltip: "Language of the explanations", kind: "ghost" })));
-    const below = h_flex().min_h(36).flex_none().px(14).py(5).gap(8).items_center().border_b(1).border_color(t.border).child(which).child(how);
+    const below = h_flex().min_h(36).flex_none().px(14).py(5).gap(8).items_center().border_b(1).border_color(t.border)
+      .when(Boolean(this.view) && this.wide(), (el) => el.child(button(t, "toggle-sidebar", this.sidebar ? "«" : "»",
+        (_e, cx) => { this.sidebar = !this.sidebar; savePrefs({ sidebar: this.sidebar }); cx.notify(); },
+        { kind: "ghost", small: true, tooltip: this.sidebar ? "Hide the contents" : "Show the contents" })))
+      .child(which).child(how);
     return v_flex().flex_none().child(top).child(below);
+  }
+
+  /** Whether the pane has room for the contents column beside the page. */
+  wide() {
+    return (this.width ?? 1000) >= 720;
   }
 
   canGenerate() {
@@ -1044,7 +1054,7 @@ export class Walkthrough {
     if (!this.view) return this.job ? this.progress(t) : this.intro(t);
     // A narrow pane gives the page the room; the footer still moves between steps.
     return h_flex().size_full().items_start()
-      .when((this.width ?? 1000) >= 720, (e) => e.child(this.contents(t)))
+      .when(this.sidebar && this.wide(), (e) => e.child(this.contents(t)))
       .child(v_flex().flex_1().min_w(0).h_full()
         .children(this.banners(t))
         .child(this.step < 0 ? this.taskPage(t) : this.step < this.view.steps.length ? this.page(t, this.view.steps[this.step]) : this.tail(t)));

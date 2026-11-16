@@ -19,6 +19,9 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
 2. **Toolbar**, two rows, each with a bottom border. Above (at least 42px, padding 7px
    14px, wrapping when narrow): what to read and the one action. Below (at least 36px,
    padding 5px 14px): on the left which one of it, on the right how it is written.
+   - below, first on the left while a walkthrough is shown and the pane is at least 720px
+     wide: a small ghost "«" button that hides the contents column ("»" shows it again);
+     the choice is kept in the `walkthrough.prefs` shared value as `sidebar`.
    - scope tabs in a `raised` pill (radius 7, padding 2): Uncommitted, Staged, Unstaged,
      Branch, Commit, Pull request, Last turn; 22px tall, 12px; the chosen one on `popover`, semibold, the rest
      `muted`. Each has a tooltip saying what it reads.
@@ -108,7 +111,7 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
        the steps not read plus the one on screen ("Every step is read." when none). After a
        rule, "… Not covered" with its count (in `accent` while some of its hunks aren't read),
        then "Haiku · English · date · $0.002" in
-       `dim` 10.5px. Hidden when the walkthrough is narrower than 720px.
+       `dim` 10.5px. Hidden when the walkthrough is narrower than 720px, or collapsed from the toolbar.
      - Banners over the page, one shape (8px radius, a 3px left edge in the banner's colour
        on its colour + `14`, or on `raised` with a `border` edge for a quiet one; an 18px
        round icon on the colour + `29`; the message 12px, then a `muted` 11.5px detail line;
