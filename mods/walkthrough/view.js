@@ -4,7 +4,7 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, VirtualListScrollHandle } from "gpui-base";
 import { spaces, panes, focused, agents, theme, props, closeOverlay, hc, exec, nextCommand, settings, shared, setShared, watchFolder, readTextFile, appHome, run } from "herdr";
-import { SCOPES, repoAt, currentHead, defaultBase, baseChoices, recentCommits, olderCommits, pullRequests, sourceKey, commitMessage, rangeMessages, taskSince } from "./lib/sources.js";
+import { SCOPES, repoAt, currentHead, defaultBase, baseChoices, recentCommits, olderCommits, pullRequests, issuesFor, sourceKey, commitMessage, rangeMessages, taskSince } from "./lib/sources.js";
 import { overlay, fileTotals, overlayAsks, asksOf } from "./lib/walkthrough.js";
 import { TASK_MODES, taskChoice, resolveTask, taskKey, taskCacheKey, clip, MAX_TASK_CHARS } from "./lib/task.js";
 import { numberLines, hunkLabel, numberDigits } from "./lib/hunks.js";
@@ -110,6 +110,7 @@ export class Walkthrough {
     this.task = null; // the task the shown source is matched against (lib/task.js), or null
     this.taskView = null; // the shown walkthrough's requests over the diff (overlayAsks), null when it has none
     this.commitTexts = new Map(); // commit messages read, by hash (a range's, by its source key)
+    this.issueTexts = new Map(); // GitHub issues found for a source (issueKey), [] for none: gh is asked once per session
     this.promptMemo = null; // { since, at, list }: prompts read from transcripts, briefly kept
     this.editingTask = false;
     this.showTaskText = false;
@@ -223,6 +224,20 @@ export class Walkthrough {
     savePrefs({ tasks });
   }
 
+  issueKey(source) {
+    return `${this.repo?.top}\0${sourceKey(source)}\0${source.head ?? this.repo?.branch ?? ""}`;
+  }
+
+  async issuesOf(source) {
+    const id = this.issueKey(source);
+    if (!this.issueTexts.has(id)) {
+      const issues = await issuesFor(exec, this.repo.top, source, source.head ?? this.repo.branch);
+      if (this.issueTexts.size >= 200) this.issueTexts.clear();
+      this.issueTexts.set(id, issues);
+    }
+    return this.issueTexts.get(id);
+  }
+
   /**
    * The task a source is matched against, or null. Reading it never fails the
    * walkthrough: a task that can't be read is no task, and the walkthrough is
@@ -232,11 +247,16 @@ export class Walkthrough {
     const repo = this.repo;
     if (!repo || !source) return null;
     const choice = this.taskChoiceFor(sourceKey(source));
-    if (choice.mode !== "auto") return resolveTask({ mode: choice.mode, own: choice.text, source });
     try {
+      const issues = await this.issuesOf(source);
+      if (choice.mode !== "auto") return resolveTask({ mode: choice.mode, own: choice.text, source, issues });
       switch (source.kind) {
         case "turn": return resolveTask({ source, turn: this.turns.find((t) => t.id === source.id) ?? null, turns: this.turns });
-        case "pr": return resolveTask({ source, pr: (this.prs ?? []).find((p) => p.number === source.number) ?? null });
+        case "pr": {
+          // Until the list comes, its description isn't known to be empty: the issue mustn't stand in for it.
+          const pr = (this.prs ?? []).find((p) => p.number === source.number) ?? null;
+          return resolveTask({ source, pr, issues: pr ? issues : null });
+        }
         case "commit": case "range": {
           const id = source.kind === "commit" ? source.hash : sourceKey(source);
           if (!this.commitTexts.has(id)) {
@@ -250,7 +270,7 @@ export class Walkthrough {
         }
         default: {
           const { since, label } = await taskSince(exec, repo.top, source);
-          return resolveTask({ source, prompts: await this.promptsSince(since), since: label });
+          return resolveTask({ source, prompts: await this.promptsSince(since), since: label, issues });
         }
       }
     } catch {
@@ -876,13 +896,15 @@ export class Walkthrough {
         label: `#${p.number}  ${p.title}`, hint: `${p.author} · ${p.head} → ${p.base}${p.draft ? " · draft" : ""}${p.current ? " · this branch" : ""}`, value: p, selected: p.number === this.pr?.number })) };
       case "turn": return { side: "left", width: 480, items: turnItems(this) };
       case "task": {
-        const choice = this.taskChoiceFor(this.diff?.sk);
+        const choice = this.taskChoiceFor(this.diff?.sk), source = this.source();
+        const issues = (source && this.issueTexts.get(this.issueKey(source))) || [];
         const hint = (m) => {
+          if (m.key === "issue") return firstLine(issues.map((i) => `#${i.number} ${i.title}`).join(" · "), 60);
           if (m.key === "auto" && choice.mode === "auto") return this.task ? this.task.label : "Nothing found for this change";
           if (m.key === "own" && choice.text) return firstLine(choice.text, 60);
           return m.about;
         };
-        return { side: "right", width: 360, items: TASK_MODES.map((m) => ({ label: m.key === "own" ? "Your own…" : m.name, hint: hint(m), value: m.key, selected: m.key === choice.mode })) };
+        return { side: "right", width: 360, items: TASK_MODES.filter((m) => m.key !== "issue" || issues.length).map((m) => ({ label: m.key === "own" ? "Your own…" : m.name, hint: hint(m), value: m.key, selected: m.key === choice.mode })) };
       }
       case "model": return { side: "right", width: 280, items: MODELS.map((m) => ({ label: m.name, hint: m.about, value: m.key, selected: m.key === this.model })) };
       case "language": return { side: "right", width: 220, items: LANGUAGES.map((l) => ({ label: l.name, right: l.english === l.name ? "" : l.english, value: l.tag, selected: l.tag === this.language })) };

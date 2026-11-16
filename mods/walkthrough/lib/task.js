@@ -23,6 +23,7 @@ export const MAX_CONTEXT_CHARS = 1500;
 
 export const TASK_MODES = [
   { key: "auto", name: "Found", about: "The prompt, pull request description or commit message this change came with" },
+  { key: "issue", name: "Issue", about: "The GitHub issue this change was made for" },
   { key: "own", name: "Your own", about: "Write what the change should do, and it is matched against that" },
   { key: "off", name: "Off", about: "No task: the walkthrough only orders and explains" },
 ];
@@ -31,6 +32,17 @@ export const TASK_MODES = [
 export function taskChoice(saved) {
   const mode = TASK_MODES.some((m) => m.key === saved?.mode) ? saved.mode : "auto";
   return { mode, text: typeof saved?.text === "string" ? saved.text.slice(0, MAX_TASK_CHARS) : "" };
+}
+
+/**
+ * The issue a branch name points at: a number leading its last segment
+ * ("123-fix-login", "feat/123-fix-login", "issue-123", "gh-123"), else null.
+ * A bare year or date ("2026-plan") names a day more often than an issue.
+ */
+export function issueNumber(branch) {
+  const m = /^(issue-|gh-)?([1-9]\d*)(?:-|$)/i.exec(String(branch ?? "").split("/").pop());
+  if (!m || (!m[1] && /^(19|20)\d\d$/.test(m[2])) || !Number.isSafeInteger(Number(m[2]))) return null;
+  return Number(m[2]);
 }
 
 /** Claude Code's folder name for a project: every character but a letter or a digit becomes "-". */
@@ -153,16 +165,28 @@ export function cleanCommitMessage(message) {
  *
  * @param {{ mode?: string, own?: string, source?: any,
  *   turn?: any, turns?: any[], pr?: { number: number, title?: string, body?: string } | null,
- *   commit?: string | null, messages?: string[] | null, prompts?: { at: number, text: string }[] | null, since?: string }} input
+ *   commit?: string | null, messages?: string[] | null, prompts?: { at: number, text: string }[] | null, since?: string,
+ *   issues?: { number: number, title: string, body: string }[] | null }} input
  * @returns {{ from: string, label: string, short: string, about: string, text: string, context: string } | null}
  */
-export function resolveTask({ mode = "auto", own = "", source = null, turn = null, turns = [], pr = null, commit = null, messages = null, prompts = null, since = "the last commit" } = {}) {
+export function resolveTask(input = {}) {
+  const { mode = "auto", own = "", source = null, turn = null, turns = [], pr = null, commit = null, messages = null, prompts = null, since = "the last commit", issues = null } = input;
   if (mode === "off") return null;
   const task = (from, label, short, about, text, context = "") => {
     const t = clip(text, MAX_TASK_CHARS);
     return t ? { from, label, short, about, text: t, context } : null;
   };
   if (mode === "own") return task("own", "Your own words", "yours", "the reader's own description of what the change should do", own);
+  const issue = () => {
+    if (!issues?.length) return null;
+    const many = issues.length > 1, numbers = issues.map((i) => `#${i.number}`).join(", ");
+    const block = (i) => [String(i.title ?? "").trim(), cleanDescription(i.body)].filter(Boolean).join("\n\n");
+    return task("issue", `Issue${many ? "s" : ""} ${numbers}`, `issue${many ? "s" : ""} ${numbers}`, `the GitHub issue${many ? "s" : ""} this change was made for`,
+      many ? issues.map((i) => `Issue #${i.number}: ${block(i)}`).join("\n\n") : block(issues[0]));
+  };
+  if (mode === "issue") return issue();
+  // Only where nothing else is found: what auto found before stays the same task, with the same cache key.
+  if (issues?.length) return resolveTask({ ...input, issues: null }) ?? issue();
   switch (source?.kind) {
     case "turn": {
       const prompt = turn?.prompt ?? source.prompt ?? "";

@@ -36,9 +36,10 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
      running", "interrupted" or "no Stop recorded, ended when seen idle"), then a ghost
      **⚡ Auto: on** / **Auto: off** that switches Auto with one click (tooltip: what it does).
    - below, right: once a diff is read, "Matched against" (11px `dim`) and the task dropdown
-     ("◎ prompt", "◎ PR description", "◎ commit message", "◎ 3 commit messages", "◎ 3 prompts", "◎ yours",
+     ("◎ prompt", "◎ PR description", "◎ commit message", "◎ 3 commit messages", "◎ 3 prompts", "◎ issue #55", "◎ yours",
      "nothing found", "nothing (off)"; rows Found (hint: where it came from, or "Nothing
-     found for this change"), Your own… (hint: its first line) and Off); then the model
+     found for this change"), Issue (only when one was found; hint "#55 its title", joined
+     with " · "), Your own… (hint: its first line) and Off); then the model
      (Haiku, Sonnet, Opus) and language (its own name: Türkçe, Deutsch …) dropdowns as ghost
      buttons in one bordered group with a 1px divider.
    - Dropdowns open a menu (8px radius, `popover`, `border`, shadow) under the toolbar,
@@ -290,6 +291,16 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
   then. Slash commands alone, "[Request interrupted …" and empty prompts are no task. At
   most 6,000 characters (2,000 per message; past that the first and the newest that fit).
   Your own: per repository and source in the prefs (`tasks`, the newest 100); the text is kept while Found or Off is picked. Off: none. A commit's or range's messages git couldn't read are asked again on the next read; read ones are kept for the session (a range's under its source key).
+  When Found finds nothing there (no prompts, a pull request listed with an
+  empty title and description), the GitHub issue is the task; otherwise Found is what it was,
+  so its walkthroughs keep their keys. Issue: `issuesFor` (`lib/sources.js`): for a pull
+  request `gh pr view <n> --json closingIssuesReferences`, then `gh issue view <url> --json
+  number,title,body` for the first 3; for Uncommitted, Staged, Unstaged and Branch, `gh issue
+  view <n>` of `issueNumber(branch)` (a number leading the name's last segment, after an
+  optional `issue-` or `gh-`; a bare year is none); commits, ranges and turns get none. Any
+  gh failure is no issue. Kept for the session per repository, source key and branch. Label
+  "Issue #55" ("Issues #55, #60"), short "issue #55"; text the title and the body cleaned as a
+  pull request's ("Issue #55: …" per issue when there are several).
   Reading a task never fails the walkthrough: one that can't be read is no task.
 - With a task, the system prompt gets the task rules and the prompt a `<task>` block (and
   `<earlier>` for context) before the digest, with every `<` that starts a `task` or
@@ -552,4 +563,7 @@ without copying again). It prints nothing and always exits 0.
 - With local edits made after prompts to Claude Code in the repository, Uncommitted shows
   "Task: 2 prompts"; a question or "thanks" among them isn't a request.
 - Post to #12 of a walkthrough matched against your own words posts no Task section;
-  matched against #12's description, it does.
+  matched against #12's description, it does; matched against an issue, it doesn't.
+- On a branch `55-fix-login` with no prompts since the last commit, Uncommitted shows
+  "◎ issue #55" and the menu has an Issue row with the issue's title; on `main` the row
+  isn't there. Without `gh` (or logged out) nothing changes and nothing errs.

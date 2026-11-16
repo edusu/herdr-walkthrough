@@ -63,7 +63,9 @@ Each step says which request it serves, and steps no request asked for are liste
 
 You don't have to type the task. It's found for you: the Last turn's prompt, the pull
 request's description, the commit's message (a range's commit messages), or the prompts you sent to Claude Code since
-the last commit. You can also write your own, or turn it off, from the **Matched against** menu. It
+the last commit. When none of those is there, the GitHub issue is: the ones a pull request closes, or the one
+the branch's name points at (`123-fix-login`, `feat/123-fix-login`, `issue-123`). You can also pick the issue
+when one was found, write your own, or turn it off, from the **Matched against** menu. It
 says *where* a request shows up, never whether it's done well.
 
 ### Honest when the code moves on
@@ -121,7 +123,7 @@ says *where* a request shows up, never whether it's done well.
 
 | Menu / command | What it does |
 | --- | --- |
-| **Matched against** menu | Found (default), Your own… (write it), or Off; kept per repository and tab |
+| **Matched against** menu | Found (default), Issue (only when one was found), Your own… (write it), or Off; kept per repository and tab |
 | Last turn → **⚡ Auto** | On (default): write the last turn's walkthrough without a click. One click turns it off: only on Generate |
 | `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.wrap`, `.task`, `.ask` | Generate, cancel, move, Copy as Markdown, Unread only, wrap lines, write your own task and ask about the step |
 | `settings.lines` in `mod.json` | `"scroll"` (default) or `"wrap"`: how long lines start. [Better Config](https://github.com/munza/herdr-mods/tree/main/better-config) shows it |
@@ -193,6 +195,9 @@ Auto is on (Haiku only, up to 300 hunks). Nothing is posted anywhere until you p
   the open pull requests and the picked one's diff. For local changes and branches it reads
   what you typed into Claude Code in this repository since the last commit (from
   `~/.claude/projects/`), to find the task. Tool output, subagents and commands are left out.
+  When a branch's name carries an issue number, it asks `gh` for that issue once; on the
+  Pull request tab, for the issues the picked pull request closes (at most 3). Each is
+  asked once per session, not again on every save.
 - **A generation is one `claude -p` call** in the background, with no tools, MCP servers,
   settings, hooks or skills: the model only reads the diff and the task, and answers. That
   keeps a small change at about $0.002 with Haiku. Each walkthrough shows what it cost.
@@ -271,6 +276,10 @@ If the mod was renamed when it was added (a name clash), replace the renamed fol
   since the last commit, whichever session it went to; a commit made mid-task starts it
   over. Matching is the model's reading: "not in this diff" may mean it's done in a file the
   diff doesn't hold, or under another name.
+- **Issues** are read with `gh` too, and only from a pull request's closing issues (the
+  first 3) or a number leading the branch name's last part; a year (`2026-plan`) or a
+  version (`v2`) is no issue. If `gh` is missing or fails, there's just no issue. A
+  commit, a range or a Last turn gets none.
 - **Last turn** records Claude Code's turns only, and writes walkthroughs without a click
   only while the walkthrough is open.
 - **Commit** and its **from** offer the latest 40 commits on HEAD; an older one can't be picked.

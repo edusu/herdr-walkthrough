@@ -6,7 +6,7 @@ import { execFile } from "node:child_process";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { repoAt, currentHead, loadSections, defaultBase, baseChoices, recentCommits, sourceKey, describe, MAX_UNTRACKED_BYTES, pullRequests, ghError, turnsKey, rangeMessages, olderCommits } from "../mods/walkthrough/lib/sources.js";
+import { repoAt, currentHead, loadSections, defaultBase, baseChoices, recentCommits, sourceKey, describe, MAX_UNTRACKED_BYTES, pullRequests, issuesFor, ghError, turnsKey, rangeMessages, olderCommits } from "../mods/walkthrough/lib/sources.js";
 import { buildDigest } from "../mods/walkthrough/lib/digest.js";
 import { jobScript, readOutcome } from "../mods/walkthrough/lib/job.js";
 import { chmodSync, readFileSync, existsSync, utimesSync } from "node:fs";
@@ -237,7 +237,8 @@ const fakeGh = (answers) => {
     if (cmd !== "gh") throw new Error(`unexpected ${cmd}`);
     const a = answers[args.slice(0, 2).join(" ")];
     if (a === undefined) throw new Error("spawn gh ENOENT");
-    return typeof a === "string" ? { code: 0, stdout: a, stderr: "" } : a;
+    const out = typeof a === "function" ? a(args) : a;
+    return typeof out === "string" ? { code: 0, stdout: out, stderr: "" } : out;
   };
   return { exec, calls };
 };
@@ -272,6 +273,29 @@ test("open pull requests, newest update first, the current branch's marked", asy
   assert.match(calls[0], /^gh pr list --state open --limit 50 --json number,title,body,headRefName,baseRefName,author,isDraft,updatedAt$/);
   assert.deepEqual(prs.map((p) => [p.number, p.author, p.draft, p.current]), [[2, "y", true, true], [1, "x", false, false]]);
   await assert.rejects(pullRequests(fakeGh({ "pr list": "not json" }).exec, "/repo"), /something other than a list/);
+});
+
+test("issues: a pull request's closing ones, or the one a branch name points at; any gh failure is none", async () => {
+  const refs = [5, 6, 7, 8].map((n) => ({ number: n, url: `https://github.com/o/r/issues/${n}` }));
+  const view = (args) => { const n = Number(args[2].split("/").pop()); return JSON.stringify({ number: n, title: `T${n}`, body: `B${n}` }); };
+  const pr = fakeGh({ "pr view": JSON.stringify({ closingIssuesReferences: refs }), "issue view": view });
+  assert.deepEqual(await issuesFor(pr.exec, "/repo", { kind: "pr", number: 9 }, "x"), [5, 6, 7].map((n) => ({ number: n, title: `T${n}`, body: `B${n}` })));
+  assert.deepEqual(pr.calls, ["gh pr view 9 --json closingIssuesReferences", ...[5, 6, 7].map((n) => `gh issue view https://github.com/o/r/issues/${n} --json number,title,body`)]);
+
+  const local = fakeGh({ "issue view": JSON.stringify({ number: 12, title: "Login", body: null }) });
+  assert.deepEqual(await issuesFor(local.exec, "/repo", { kind: "uncommitted" }, "feat/12-login"), [{ number: 12, title: "Login", body: "" }]);
+  assert.deepEqual(local.calls, ["gh issue view 12 --json number,title,body"]);
+
+  const none = fakeGh({});
+  assert.deepEqual(await issuesFor(none.exec, "/repo", { kind: "branch", base: "main" }, "main"), []);
+  assert.deepEqual(await issuesFor(none.exec, "/repo", { kind: "range", from: "a", to: "b" }, "12-x"), []);
+  assert.deepEqual(none.calls, []);
+  assert.deepEqual(await issuesFor(none.exec, "/repo", { kind: "staged" }, "12-x"), []); // gh missing
+  const missing = fakeGh({ "issue view": { code: 1, stdout: "", stderr: "GraphQL: Could not resolve to an issue or pull request with the number of 99." } });
+  assert.deepEqual(await issuesFor(missing.exec, "/repo", { kind: "staged" }, "99-x"), []);
+  const loggedOut = fakeGh({ "pr view": { code: 4, stdout: "", stderr: "To get started with GitHub CLI, please run:  gh auth login" } });
+  assert.deepEqual(await issuesFor(loggedOut.exec, "/repo", { kind: "pr", number: 9 }, null), []);
+  assert.deepEqual(await issuesFor(fakeGh({ "pr view": "not json" }).exec, "/repo", { kind: "pr", number: 9 }, null), []);
 });
 
 // ——— Last turn: hooks/turn.sh against a real repository ———

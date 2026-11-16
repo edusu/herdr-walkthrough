@@ -7,7 +7,7 @@
 // unstaged one.
 
 import { firstLine } from "./turns.js";
-import { cleanCommitMessage, MAX_MESSAGES } from "./task.js";
+import { cleanCommitMessage, issueNumber, MAX_MESSAGES } from "./task.js";
 
 // Reads write nothing under .git: no index refresh, no lock, no fsmonitor.
 const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "core.quotePath=false", "-c", "diff.autoRefreshIndex=false"];
@@ -381,6 +381,33 @@ export async function pullRequests(exec, top, branch = null) {
     .map((p) => ({ number: p.number, title: p.title ?? "", body: typeof p.body === "string" ? p.body : "", head: p.headRefName ?? "", base: p.baseRefName ?? "", author: p.author?.login ?? "",
       draft: Boolean(p.isDraft), updated: p.updatedAt ?? "", current: Boolean(branch) && p.headRefName === branch }))
     .sort((a, b) => b.updated.localeCompare(a.updated));
+}
+
+// A pull request can close many issues; the first few say what it was for, and each costs a gh call.
+const MAX_ISSUES = 3;
+
+/**
+ * The GitHub issues a change was made for, as { number, title, body }: a pull
+ * request's closing issues, or the one a working tree's or branch's name
+ * points at (issueNumber). Any failure of gh (missing, logged out, no such
+ * issue, no GitHub remote) is no issue.
+ */
+export async function issuesFor(exec, top, source, branch) {
+  let refs = [];
+  try {
+    if (source?.kind === "pr") refs = JSON.parse(await gh(exec, top, ["pr", "view", String(source.number), "--json", "closingIssuesReferences"]))?.closingIssuesReferences;
+    else if (["uncommitted", "staged", "unstaged", "branch"].includes(source?.kind)) refs = [{ number: issueNumber(branch) }];
+  } catch { return []; }
+  const read = async (ref) => {
+    // By its url when given: a pull request can close an issue of another repository.
+    const which = typeof ref?.url === "string" && ref.url ? ref.url : Number.isInteger(ref?.number) ? String(ref.number) : null;
+    if (!which) return null;
+    try {
+      const i = JSON.parse(await gh(exec, top, ["issue", "view", which, "--json", "number,title,body"]));
+      return Number.isInteger(i?.number) ? { number: i.number, title: String(i.title ?? ""), body: typeof i.body === "string" ? i.body : "" } : null;
+    } catch { return null; }
+  };
+  return (await Promise.all((Array.isArray(refs) ? refs : []).slice(0, MAX_ISSUES).map(read))).filter(Boolean);
 }
 
 /** A commit's whole message, subject and body; null when git couldn't read it (so it can be asked again). */

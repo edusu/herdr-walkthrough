@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync, utimesSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  projectSlug, isNoise, clip, parseTranscript, joinMessages, cleanDescription, cleanCommitMessage, resolveTask, taskKey, taskCacheKey, taskChoice, jsonPath,
+  projectSlug, isNoise, clip, parseTranscript, joinMessages, cleanDescription, cleanCommitMessage, resolveTask, taskKey, taskCacheKey, taskChoice, jsonPath, issueNumber,
   TRANSCRIPTS, MAX_TASK_CHARS, MAX_MESSAGE_CHARS, MAX_CONTEXT,
 } from "../mods/walkthrough/lib/task.js";
 import { buildDigest } from "../mods/walkthrough/lib/digest.js";
@@ -162,6 +162,27 @@ test("resolveTask: each source's own task, the reader's words, or none", () => {
 
   // Too long a task is cut to the limit, never refused.
   assert.equal(resolveTask({ mode: "own", own: "z".repeat(MAX_TASK_CHARS * 2), source: { kind: "staged" } }).text.length, MAX_TASK_CHARS);
+});
+
+test("issueNumber: a number leading the branch name's last segment, nothing else", () => {
+  for (const [branch, n] of [["123-fix-login", 123], ["feat/123-fix-login", 123], ["issue-123", 123], ["gh-123", 123], ["me/45", 45], ["issue-2026", 2026]]) assert.equal(issueNumber(branch), n, branch);
+  for (const branch of ["2026-plan", "2026-11-16-notes", "v2", "main", "fix-123", "1.2-hotfix", "0-x", "123/fix", "", null]) assert.equal(issueNumber(branch), null, String(branch));
+});
+
+test("resolveTask: an issue when chosen, and in auto only when nothing else is found", () => {
+  const issues = [{ number: 55, title: "Login fails", body: "<!-- template -->\nOn Safari." }];
+  const one = resolveTask({ mode: "issue", source: { kind: "uncommitted" }, issues });
+  assert.deepEqual([one.from, one.label, one.short, one.text], ["issue", "Issue #55", "issue #55", "Login fails\n\nOn Safari."]);
+  const two = resolveTask({ mode: "issue", source: { kind: "pr", number: 3 }, issues: [...issues, { number: 60, title: "Also Chrome", body: "" }] });
+  assert.deepEqual([two.label, two.short, two.text], ["Issues #55, #60", "issues #55, #60", "Issue #55: Login fails\n\nOn Safari.\n\nIssue #60: Also Chrome"]);
+  assert.equal(resolveTask({ mode: "issue", source: { kind: "uncommitted" }, issues: [] }), null);
+  assert.equal(resolveTask({ source: { kind: "branch", base: "main" }, prompts: [], issues }).from, "issue");
+  assert.equal(resolveTask({ source: { kind: "pr", number: 3 }, pr: { number: 3, title: "", body: "" }, issues }).from, "issue");
+  // What auto found before is found as it was, so its walkthroughs keep their keys.
+  const prompts = [{ at: 1, text: "Add X" }];
+  assert.deepEqual(resolveTask({ source: { kind: "uncommitted" }, prompts, issues }), resolveTask({ source: { kind: "uncommitted" }, prompts }));
+  assert.equal(resolveTask({ mode: "own", own: "Mine", source: { kind: "uncommitted" }, issues }).from, "own");
+  assert.equal(resolveTask({ mode: "off", source: { kind: "uncommitted" }, issues }), null);
 });
 
 test("a turn's task is its prompt; the session's earlier prompts (only those) make it clear", () => {
