@@ -45,7 +45,7 @@ export async function sendPage(exec, write, { title, markdown, ntn, parent, path
     // exec has no stdin: the shell redirects the file, and the id travels only as a positional argument.
     await run("sh", ["-c", '"$1" pages edit "$2" < "$3"', "sh", ntn, page.id, path]);
   } catch (err) {
-    throw new Error(`Created the page ${url}, but couldn't write the walkthrough into it: ${err?.message ?? err}`);
+    throw Object.assign(new Error(`Created the page ${url}, but couldn't write the walkthrough into it: ${err?.message ?? err}`), { url });
   }
   return url;
 }

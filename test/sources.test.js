@@ -155,8 +155,10 @@ test("another mod's props: what can't be trusted is dropped", () => {
 });
 
 test("a commit by any hash git knows, past the listed ones, in their shape", async () => {
-  const [listed] = await recentCommits(exec, dir, 1);
-  assert.deepEqual(await commitAt(exec, dir, listed.hash.slice(0, 7)), listed);
+  // Without "when": relative to now, it can tick over between the two reads.
+  const [{ when: _listed, ...listed }] = await recentCommits(exec, dir, 1);
+  const { when: _found, ...found } = await commitAt(exec, dir, listed.hash.slice(0, 7));
+  assert.deepEqual(found, listed);
   assert.equal(await commitAt(exec, dir, "0000000"), null);
 });
 

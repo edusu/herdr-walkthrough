@@ -366,6 +366,7 @@ test("a question about a step: its place, text and files with their lines, then 
   assert.equal(formatQuestion(step, "uncommitted changes", "  why three?  "),
     'Question about step 2, "Retry failed uploads", of the walkthrough of uncommitted changes\nThe step says: Uploads are retried three times.\nFiles: src/a.js (lines 1-3, 10-12), src/b.js (lines 4-5 removed)\nQuestion: why three?');
   const stale = formatQuestion({ ...step, outdated: true, missing: 1, found: step.found.slice(0, 1) }, "commit abc", "still true?");
+  assert.match(formatQuestion({ ...step, outdated: true, missing: 2 }, "a change", "q"), /2 of its hunks have changed/);
   assert.match(stale, /\nFiles: src\/a\.js \(lines 1-3\)\nNote: the step is outdated: 1 of its hunks has changed or is gone since it was written\.\nQuestion: still true\?$/);
   // The question goes as typed, backticks and newlines included; a long step is clipped, the question never.
   const long = formatQuestion({ ...step, text: "x".repeat(5000) }, "a change", "is `retry()` safe?\nand ```this```?");

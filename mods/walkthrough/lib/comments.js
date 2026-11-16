@@ -48,7 +48,7 @@ export function formatQuestion(step, what, question) {
     `Question about step ${step.position}, "${clip(step.title, 200)}", of the walkthrough of ${what}`,
     `The step says: ${clip(step.text, 1500)}`,
     listed.length ? `Files: ${listed.join(", ")}` : "",
-    step.outdated ? `Note: the step is outdated: ${step.missing ? `${step.missing} of its hunks has` : "its code has"} changed or is gone since it was written.` : "",
+    step.outdated ? `Note: the step is outdated: ${step.missing ? `${step.missing} of its hunks ${step.missing === 1 ? "has" : "have"}` : "its code has"} changed or is gone since it was written.` : "",
     `Question: ${question.trim()}`,
   ].filter(Boolean).join("\n");
 }

@@ -257,6 +257,8 @@ export class Walkthrough {
     if (!repo || !source) return null;
     const choice = this.taskChoiceFor(sourceKey(source));
     try {
+      // "Your own" and "Off" need no issue: gh is still asked, for the task menu, but the read doesn't wait for it.
+      if (choice.mode === "own" || choice.mode === "off") { this.issuesOf(source).catch(() => {}); return resolveTask({ mode: choice.mode, own: choice.text, source }); }
       const issues = await this.issuesOf(source);
       if (choice.mode !== "auto") return resolveTask({ mode: choice.mode, own: choice.text, source, issues });
       switch (source.kind) {
@@ -532,6 +534,7 @@ export class Walkthrough {
     const steps = this.view?.steps ?? [];
     this.step = Math.max(this.firstPage(), Math.min(steps.length, index));
     this.target = null;
+    this.asking = false;
   }
 
   /**
@@ -744,8 +747,10 @@ export class Walkthrough {
   /** The question goes to the agent, which answers in its terminal: the walkthrough's own model is not asked. */
   async ask(cx) {
     const agent = this.agent(), s = this.view?.steps[this.step], text = this.question.value().trim();
-    if (!agent || !s || !text) return;
+    if (!agent || !s || !text || this.sendingQuestion) return;
+    this.sendingQuestion = true; // Enter twice, or Enter and Send, is one question
     const r = await hc(["send", agent.address, formatQuestion(s, this.diff?.what ?? "a change", text)]).catch((e) => ({ code: 1, stderr: String(e?.message ?? e) }));
+    this.sendingQuestion = false;
     if (r.code === 0) {
       this.flash(`Sent the question to ${agent.program?.name ?? agent.address}.`);
       this.question.set_value("");
@@ -815,6 +820,7 @@ export class Walkthrough {
       this.notionUrl = await sendToNotion({ ...this.notion, title: [this.shown.entry.walkthrough.title || "Walkthrough", this.repo.name, where].join(" · "), markdown: text.replace(MARK_START, "").replace(MARK_END, "").trim() });
       this.flash(NOTION_SENT);
     } catch (err) {
+      this.notionUrl = err?.url ?? null; // a page made and left empty: the note opens it
       this.flash(`Couldn't send to Notion: ${String(err?.message ?? err)}`);
     }
     this.posting = false;
@@ -1497,7 +1503,7 @@ export class Walkthrough {
         .when(Boolean(this.notion), (e) => e.child(button(t, "notion", "Send to Notion", (_e, cx) => { this.confirmNotion = true; this.sent = null; cx.notify(); }, { kind: "ghost", small: true, tooltip: "Creates a Notion page with the walkthrough as Markdown, after you confirm" })))
         .when(Boolean(this.sent), (e) => {
           const ok = /^(Sent|Copied|Posted)\b/.test(this.sent);
-          const link = this.sent === NOTION_SENT && this.notionUrl;
+          const link = this.notionUrl && (this.sent === NOTION_SENT || this.sent.includes(this.notionUrl));
           return e.child(div().id("sent").text_size(11.5).text_color(ok ? t.ansi2 : t.dim).truncate().child(ok ? `✓ ${this.sent}${link ? " Open it ↗" : ""}` : this.sent)
             .when(Boolean(link), (e) => e.cursor_pointer().on_click((_e, cx) => cx.open_url(this.notionUrl))));
         })
