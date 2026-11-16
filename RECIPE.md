@@ -178,8 +178,9 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
    page, "Not covered →" on the last step), "2 / 5 read · ← → to move" or "End of the walkthrough ·
    2 / 5 read", a ghost "Unread only" / "Show all";
    at the right, on the Pull request tab, a ghost "Post to #12", then a ghost "Copy as
-   Markdown", the last send's, copy's or post's result (in `ansi2` with a ✓ when it
-   worked), "Click a line to comment" or "2 comments", and with
+   Markdown", when `ntn` runs a ghost "Send to Notion", the last send's, copy's or post's
+   result (in `ansi2` with a ✓ when it worked; after Send to Notion, "✓ Sent to Notion.
+   Open it ↗", which opens the page), "Click a line to comment" or "2 comments", and with
    comments an agent dropdown ("Claude Code · t3") and a solid **Send**.
 
 ## How it behaves
@@ -247,6 +248,19 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
   cancels too). Post writes the Copy as Markdown text to
   `~/.herdr/walkthrough/pr-comment.md` and runs `gh pr comment N --body-file …`; over
   65,536 characters it refuses. The footer says "Posted the walkthrough to #12." or why not.
+- **Send to Notion** shows only when `<ntn> --version` exits 0, checked once on opening.
+  `<ntn>` and the parent come from `settings.notion` in `mod.json`, else from the
+  notion-notes mod's `mod.json` settings (`ntn`, `parents[0].ref`), else `ntn` and no
+  parent (a private page). It asks first, in the footer: "Create a Notion page with this
+  walkthrough? Its task, your prompts included, goes with it." with a solid **Send** and
+  Cancel (Esc cancels too). Send runs `ntn pages create --json --content=---⏎title: <JSON
+  string>⏎---⏎` (`--parent <ref>` when set; joined with `=` because ntn takes a leading
+  `---` for a flag), titled "<walkthrough title> · <repo> · <branch, #N, commit or range>",
+  then writes the Copy as Markdown text, without its `<!-- walkthrough -->` marks and after
+  an empty frontmatter (`pages edit` strips a leading one), to
+  `~/.herdr/walkthrough/notion.md` and runs `sh -c '"$1" pages edit "$2" < "$3"'` with ntn,
+  the page id and the file as arguments. The footer says "Sent to Notion. Open it ↗" for 10
+  seconds (a click opens the page) or why not; a failure after the page was made names it.
 - Agent statuses (working, blocked, done, idle) are not shown; the agent dropdown names the
   program and the terminal.
 - **Last turn** reads `~/.herdr/walkthrough/turns/<repo>/` (`<repo>`: the first 16 digits of

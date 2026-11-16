@@ -30,7 +30,7 @@ source and props handling, S5 on S4). Part B is other repositories and needs S6 
 | S2 | Range in the Commit tab | The Commit tab has a "from" picker; choosing an older commit walks through everything after it up to the picked commit | Done |
 | S3 | Ask about a step | A question typed on a step reaches the chosen agent with the step's title, text and files | Done |
 | S4 | Task from a GitHub issue | A pull request's closing issues, or the issue a branch name points at, can be the task; "Matched against" offers it | Done |
-| S5 | Send to Notion | **Send to Notion** creates a page holding the walkthrough's Markdown and shows its link | Pending |
+| S5 | Send to Notion | **Send to Notion** creates a page holding the walkthrough's Markdown and shows its link | Done |
 | S6 | Open from other mods | Props `{scope, commit, since, pr, path}` open the walkthrough on that commit, range, pull request or file's step; documented as the contract | Pending |
 | B1 | Branch PR opens it | In `herdr-mods/branch-pr`, a PR's header has **Walkthrough**, shown only when the mod is installed | Pending |
 | B2 | Git Graph opens it | In `herdr-git-graph`, a commit's right-click menu has "Walkthrough of this commit" and "Walkthrough from this commit to HEAD" | Pending |

@@ -13,9 +13,9 @@ import { LANGUAGES, languageOf, fromLocale } from "./lib/languages.js";
 import { MODELS, DEFAULT_MODEL, modelOf } from "./lib/job.js";
 import { estimateTokens, codeKey, placeKey, MAX_PROMPT_CHARS } from "./lib/cache.js";
 import { formatComments, formatQuestion, addComment, sameSpot } from "./lib/comments.js";
-import { toMarkdown } from "./lib/export.js";
+import { toMarkdown, MARK_START, MARK_END } from "./lib/export.js";
 import { readKey, hunkRead, isRead, markStep, unmarkStep, mergeRead, changedSince } from "./lib/read.js";
-import { readDiff, readPreferences, matters, keyFor, findShown, preparePrompt, fits, promptChars, jobOf, startJob, alive, finished, cancelJob, finishJob, copyText, postComment, claudeVersion, systemLocale, ensureDirs, loadRead, saveRead, transcriptMessages } from "./engine.js";
+import { readDiff, readPreferences, matters, keyFor, findShown, preparePrompt, fits, promptChars, jobOf, startJob, alive, finished, cancelJob, finishJob, copyText, postComment, sendToNotion, notionSetup, claudeVersion, systemLocale, ensureDirs, loadRead, saveRead, transcriptMessages } from "./engine.js";
 import { button, chip, menu, picker, formatElapsed, formatTokens } from "./ui.js";
 import { turnSource, isOpen, firstLine } from "./lib/turns.js";
 import { AUTO, DEFAULT_AUTO, autoOf, startTurns, loadTurns, turnLabel, turnItems, chooseTurn, turnTick, autoGenerate, announce, hookHelp } from "./turnview.js";
@@ -25,6 +25,8 @@ const PREFS = "walkthrough.prefs";
 const MAX_PAGE_LINES = 2500;
 // The walkthrough's summary is cut past this until "Show more".
 const SUMMARY_CHARS = 150;
+// Kept in the footer as long as an error, since a click on it opens the page.
+const NOTION_SENT = "Sent to Notion.";
 const NOTE_LABEL = { choice: "Decision", upkeep: "Upkeep", gap: "Limitation", divergence: "Divergence", untested: "Untested" };
 const NOTE_ABOUT = {
   choice: "A product or design call made here that could have gone another way",
@@ -102,6 +104,9 @@ export class Walkthrough {
     this.background = []; // walkthroughs written without a click, followed to their end: { job }
     this.confirmPost = false;
     this.posting = false;
+    this.confirmNotion = false;
+    this.notion = null; // { ntn, parent } once ntn --version has run: Send to Notion is offered
+    this.notionUrl = null; // the page last sent, opened by a click on the note
     this.claude = undefined;
     this.diff = null;
     this.cacheKey = null;
@@ -128,6 +133,7 @@ export class Walkthrough {
     this.unreadOnly = false; // the contents and ← → skip read steps
     this.wrap = false; // long code lines wrap instead of scrolling sideways; starts from settings.lines in mod.json
     readTextFile(`${appHome()}/mods/walkthrough/mod.json`).then((raw) => { this.wrap = JSON.parse(raw ?? "{}").settings?.lines === "wrap"; cx.notify(); }).catch(() => {});
+    notionSetup().then((n) => { this.notion = n; cx.notify(); });
     this.openFiles = new Set();
     this.comments = [];
     this.target = null; // { sk, scope, path, line, kind, code }: the line a comment is being written on
@@ -386,7 +392,7 @@ export class Walkthrough {
 
   async tick(cx) {
     // A note on what Copy, Send or Post did fades: soon when it worked, later when it didn't.
-    if (this.sent && Date.now() - this.sentAt >= (/^(✓ )?(Sent|Copied|Posted)\b/.test(this.sent) ? 1000 : 10_000)) { this.sent = null; cx.notify(); }
+    if (this.sent && Date.now() - this.sentAt >= (/^(✓ )?(Sent|Copied|Posted)\b/.test(this.sent) && this.sent !== NOTION_SENT ? 1000 : 10_000)) { this.sent = null; cx.notify(); }
     if (this.ticking || !this.repo) return;
     this.ticking = true;
     try {
@@ -563,7 +569,7 @@ export class Walkthrough {
     this.picking = null;
     this.genError = null;
     this.loading = true; // until the read the change starts has finished
-    this.confirmPost = false;
+    this.confirmPost = this.confirmNotion = false;
     savePrefs({ scope: key });
     cx.spawn(async (cx) => {
       // Listed again each time the tab is picked: pull requests open, close and move on GitHub.
@@ -769,6 +775,24 @@ export class Walkthrough {
     cx.notify();
   }
 
+  /** The walkthrough as a new Notion page. Asked first: the task, often the reader's own prompts, goes with it. */
+  async sendNotion(cx) {
+    const text = this.markdown(), s = this.source();
+    if (!text || !this.notion || this.posting) return;
+    this.posting = true;
+    cx.notify();
+    const where = s?.kind === "pr" ? `#${s.number}` : s?.kind === "commit" ? s.hash.slice(0, 12) : s?.kind === "range" ? `${s.from.slice(0, 12)}..${s.to.slice(0, 12)}` : s?.head ?? this.repo.branch ?? "HEAD";
+    try {
+      this.notionUrl = await sendToNotion({ ...this.notion, title: [this.shown.entry.walkthrough.title || "Walkthrough", this.repo.name, where].join(" · "), markdown: text.replace(MARK_START, "").replace(MARK_END, "").trim() });
+      this.flash(NOTION_SENT);
+    } catch (err) {
+      this.flash(`Couldn't send to Notion: ${String(err?.message ?? err)}`);
+    }
+    this.posting = false;
+    this.confirmNotion = false;
+    cx.notify();
+  }
+
   onKey(e, cx) {
     // While typing, keys are the text's; only Esc in the task editor or the question box leaves it (a comment box keeps its own).
     if (this.typing) {
@@ -783,7 +807,7 @@ export class Walkthrough {
       else if (this.editingTask) this.closeTaskEditor();
       else if (this.target) this.target = null;
       else if (this.asking) this.closeAsk();
-      else if (this.confirmPost && !this.posting) this.confirmPost = false;
+      else if ((this.confirmPost || this.confirmNotion) && !this.posting) this.confirmPost = this.confirmNotion = false;
       else if (props()?.overlay) closeOverlay(props().overlay);
     } else if (this.view && (k === "right" || k === "j" || k === "n")) this.move(1);
     else if (this.view && (k === "left" || k === "k" || k === "p")) this.move(-1);
@@ -1433,13 +1457,20 @@ export class Walkthrough {
         .child(div().text_size(11.5).text_color(t.foreground).truncate().child(`Post this walkthrough as a comment on #${this.pr.number}? Everyone who can see the pull request will see it.`))
         .child(button(t, "post-yes", this.posting ? "Posting…" : "Post", (_e, cx) => cx.spawn(async (cx) => this.post(cx)), { kind: "solid", small: true, disabled: this.posting }))
         .child(button(t, "post-no", "Cancel", (_e, cx) => { this.confirmPost = false; cx.notify(); }, { kind: "ghost", small: true, disabled: this.posting })))
-      .when(!this.confirmPost, (e) => e
+      .when(this.confirmNotion, (e) => e
+        .child(div().text_size(11.5).text_color(t.foreground).truncate().child("Create a Notion page with this walkthrough? Its task, your prompts included, goes with it."))
+        .child(button(t, "notion-yes", this.posting ? "Sending…" : "Send", (_e, cx) => cx.spawn(async (cx) => this.sendNotion(cx)), { kind: "solid", small: true, disabled: this.posting }))
+        .child(button(t, "notion-no", "Cancel", (_e, cx) => { this.confirmNotion = false; cx.notify(); }, { kind: "ghost", small: true, disabled: this.posting })))
+      .when(!this.confirmPost && !this.confirmNotion, (e) => e
         .when(this.scope === "pr" && Boolean(this.pr), (e) => e.child(button(t, "post", `Post to #${this.pr.number}`,
           (_e, cx) => { this.confirmPost = true; this.sent = null; cx.notify(); }, { kind: "ghost", small: true, tooltip: "Adds the walkthrough as a comment on the pull request, after you confirm" })))
         .child(button(t, "copy", "Copy as Markdown", (_e, cx) => cx.spawn(async (cx) => this.copy(cx)), { kind: "ghost", small: true, tooltip: "The steps and notes, without the code: for a pull request, a review or a chat" }))
+        .when(Boolean(this.notion), (e) => e.child(button(t, "notion", "Send to Notion", (_e, cx) => { this.confirmNotion = true; this.sent = null; cx.notify(); }, { kind: "ghost", small: true, tooltip: "Creates a Notion page with the walkthrough as Markdown, after you confirm" })))
         .when(Boolean(this.sent), (e) => {
           const ok = /^(Sent|Copied|Posted)\b/.test(this.sent);
-          return e.child(div().text_size(11.5).text_color(ok ? t.ansi2 : t.dim).truncate().child(ok ? `✓ ${this.sent}` : this.sent));
+          const link = this.sent === NOTION_SENT && this.notionUrl;
+          return e.child(div().id("sent").text_size(11.5).text_color(ok ? t.ansi2 : t.dim).truncate().child(ok ? `✓ ${this.sent}${link ? " Open it ↗" : ""}` : this.sent)
+            .when(Boolean(link), (e) => e.cursor_pointer().on_click((_e, cx) => cx.open_url(this.notionUrl))));
         })
         .child(div().text_size(11.5).text_color(n ? t.foreground : t.dim).child(n ? `${n} comment${n === 1 ? "" : "s"}` : "Click a line to comment"))
         .when(n > 0, (e) => e

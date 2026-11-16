@@ -6,6 +6,7 @@
 //   jobs/<place>/          a generation in progress (run.sh, prompt, answer)
 //   turns/<repo>/<turn>/   an agent's turn, written by hooks/turn.sh (see lib/turns.js)
 //   read/<repo>.json       the hunks read in a repository, by content
+//   notion.md              the last walkthrough sent to Notion, as ntn read it
 //   preferences.md         optional: the reader's own wishes, added to every prompt
 
 import { exec, home, appHome, readTextFile, writeTextFile } from "herdr";
@@ -19,6 +20,7 @@ import { mergeRead } from "./lib/read.js";
 import { jobScript, readOutcome, isRunCommand } from "./lib/job.js";
 import { parseListing, resolveEnds, LISTING } from "./lib/turns.js";
 import { taskKey, taskCacheKey, parseTranscript, projectSlug, jsonPath, TRANSCRIPTS } from "./lib/task.js";
+import { notionSettings, sendPage } from "./lib/notion.js";
 
 const MAX_ENTRIES = 200;
 export const dataDir = () => `${home()}/.herdr/walkthrough`;
@@ -84,6 +86,25 @@ export async function claudeVersion() {
     return r.code === 0 ? r.stdout.trim() : null;
   } catch { return null; }
 }
+
+const settingsOf = async (mod) => {
+  try { return JSON.parse((await readTextFile(`${appHome()}/mods/${mod}/mod.json`)) ?? "{}").settings ?? {}; } catch { return {}; }
+};
+
+/**
+ * The `ntn` and parent pages go to Notion with (lib/notion.js: notionSettings), when
+ * `ntn --version` runs; else null. Only notion-notes' mod.json is read, never its notes.
+ */
+export async function notionSetup() {
+  const [own, notes] = await Promise.all([settingsOf("walkthrough"), settingsOf("notion-notes")]);
+  const setup = notionSettings(own.notion, notes);
+  try {
+    return (await exec(setup.ntn, ["--version"])).code === 0 ? setup : null;
+  } catch { return null; }
+}
+
+/** A new Notion page holding the walkthrough's Markdown, written through a file like the clipboard. @returns {Promise<string>} its URL */
+export const sendToNotion = ({ title, markdown, ntn, parent }) => sendPage(exec, write, { title, markdown, ntn, parent, path: `${dataDir()}/notion.md` });
 
 /**
  * The diff of a source as it is now, parsed, with what the model would read.

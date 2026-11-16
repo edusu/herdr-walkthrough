@@ -92,6 +92,9 @@ says *where* a request shows up, never whether it's done well.
   marks, so a description holding one isn't read back as the task.
 - **Post to #12** adds the walkthrough as a comment on the pull request, after you confirm.
   Your prompts are never posted.
+- **Send to Notion** creates a Notion page with the Copy as Markdown text, task included,
+  after you confirm, through Notion's CLI (`ntn`). It is
+  shown only when `ntn` runs; click the note it leaves to open the page.
 
 ### Cheap, and out of your way
 
@@ -127,6 +130,7 @@ says *where* a request shows up, never whether it's done well.
 | Last turn → **⚡ Auto** | On (default): write the last turn's walkthrough without a click. One click turns it off: only on Generate |
 | `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.wrap`, `.task`, `.ask` | Generate, cancel, move, Copy as Markdown, Unread only, wrap lines, write your own task and ask about the step |
 | `settings.lines` in `mod.json` | `"scroll"` (default) or `"wrap"`: how long lines start. [Better Config](https://github.com/munza/herdr-mods/tree/main/better-config) shows it |
+| `settings.notion` in `mod.json` | `{ "ntn": "", "parent": "" }`: the `ntn` to run and the parent of new pages (`page:<id>`, `database:<id>` or `data-source:<id>`). Empty values take the notion-notes mod's `ntn` and first parent, else `ntn` and a private page |
 
 </details>
 
@@ -189,7 +193,8 @@ of the agent you opened it over, and a pane knows which turns are its tab's.
 
 **Nothing is sent to a model until you press Generate**, except an agent's last turn while
 Auto is on (Haiku only, up to 300 hunks). Nothing is posted anywhere until you press
-**Post** and confirm.
+**Post** or **Send to Notion** and confirm. On opening, `ntn --version` runs once, locally, to
+tell whether to offer Send to Notion; nothing reaches Notion then.
 
 - **Opening the walkthrough only reads git.** On the Pull request tab it also asks `gh` for
   the open pull requests and the picked one's diff. For local changes and branches it reads
@@ -218,6 +223,7 @@ Auto is on (Haiku only, up to 300 hunks). Nothing is posted anywhere until you p
 | `read/<repo>.json` | The hunks you've read in a repository, by content, the newest 5,000 |
 | `clipboard.md` | The last walkthrough copied as Markdown |
 | `pr-comment.md` | The last walkthrough posted to a pull request |
+| `notion.md` | The last walkthrough sent to Notion |
 | `preferences.md` | Optional: your own wishes for tone and emphasis, added to every prompt |
 
 A walkthrough written before 0.7.0, for something that now has a task (a commit message, a

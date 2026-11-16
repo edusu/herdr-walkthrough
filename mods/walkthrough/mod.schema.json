@@ -20,6 +20,17 @@
           "enum": ["scroll", "wrap"],
           "x-labels": { "scroll": "Scroll", "wrap": "Wrap" },
           "default": "scroll"
+        },
+        "notion": {
+          "title": "Notion",
+          "description": "Where Send to Notion creates pages. Empty values fall back to the notion-notes mod's settings (its ntn and first parent), then to ntn on the PATH and a private page.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ntn": { "type": "string", "description": "The Notion CLI to run: a name on the PATH or a full path.", "default": "" },
+            "parent": { "type": "string", "description": "The parent of new pages, as ntn pages create --parent takes it: page:<id>, database:<id> or data-source:<id>.", "default": "" }
+          },
+          "default": { "ntn": "", "parent": "" }
         }
       }
     }
