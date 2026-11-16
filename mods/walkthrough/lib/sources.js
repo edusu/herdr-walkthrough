@@ -344,8 +344,12 @@ export async function recentCommits(exec, top, count = 40, rev = null) {
 
 /** A commit by an abbreviated or full hash (a prop's checked by openRequest first), in recentCommits' shape, or null when git knows none. */
 export async function commitAt(exec, top, hash) {
-  const r = await git(exec, top, ["rev-parse", "--verify", "-q", `${hash}^{commit}`]);
-  return r.ok ? (await recentCommits(exec, top, 1, r.out.trim()))[0] ?? null : null;
+  return (await recentCommits(exec, top, 1, `${hash}^{commit}`))[0] ?? null;
+}
+
+/** How many commits a range holds: those after `from` up to `to`, merges and their side branches included. */
+export async function rangeCount(exec, top, from, to) {
+  return Number((await must(exec, top, ["rev-list", "--count", `${from}..${to}`])).trim());
 }
 
 /**

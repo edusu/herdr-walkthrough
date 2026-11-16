@@ -10,7 +10,7 @@
 //   preferences.md         optional: the reader's own wishes, added to every prompt
 
 import { exec, home, appHome, readTextFile, writeTextFile } from "herdr";
-import { loadSections, sourceKey, describe, git, worthReading, ghError, turnsKey, snapshotTree } from "./lib/sources.js";
+import { loadSections, sourceKey, describe, rangeCount, git, worthReading, ghError, turnsKey, snapshotTree } from "./lib/sources.js";
 import { buildDigest } from "./lib/digest.js";
 import { buildPrompt } from "./lib/prompt.js";
 import { schemaFor, normalize, VERSION } from "./lib/walkthrough.js";
@@ -87,20 +87,23 @@ export async function claudeVersion() {
   } catch { return null; }
 }
 
-const settingsOf = async (mod) => {
+/** A mod's `settings` from its mod.json; {} when it can't be read. */
+export const settingsOf = async (mod) => {
   try { return JSON.parse((await readTextFile(`${appHome()}/mods/${mod}/mod.json`)) ?? "{}").settings ?? {}; } catch { return {}; }
 };
 
+// Whether `<ntn> --version` ran, by ntn path: asked once per process, not on every opening.
+const ntnRuns = new Map();
+
 /**
- * The `ntn` and parent pages go to Notion with (lib/notion.js: notionSettings), when
- * `ntn --version` runs; else null. Only notion-notes' mod.json is read, never its notes.
+ * The `ntn` and parent pages go to Notion with (lib/notion.js: notionSettings), given this
+ * mod's `notion` setting, when `ntn --version` runs; else null. Only notion-notes' mod.json
+ * is read, never its notes.
  */
-export async function notionSetup() {
-  const [own, notes] = await Promise.all([settingsOf("walkthrough"), settingsOf("notion-notes")]);
-  const setup = notionSettings(own.notion, notes);
-  try {
-    return (await exec(setup.ntn, ["--version"])).code === 0 ? setup : null;
-  } catch { return null; }
+export async function notionSetup(own) {
+  const setup = notionSettings(own, await settingsOf("notion-notes"));
+  if (!ntnRuns.has(setup.ntn)) ntnRuns.set(setup.ntn, exec(setup.ntn, ["--version"]).then((r) => r.code === 0, () => false));
+  return (await ntnRuns.get(setup.ntn)) ? setup : null;
 }
 
 /** A new Notion page holding the walkthrough's Markdown, written through a file like the clipboard. @returns {Promise<string>} its URL */
@@ -114,7 +117,8 @@ export async function readDiff(repo, source) {
   const { sections, unread } = await loadSections(exec, repo.top, source);
   const digest = buildDigest(sections);
   for (const u of unread) digest.files.push({ path: u.path, oldPath: null, status: "added", binary: false, scope: "unread", hunks: [], generated: false, unread: u.why });
-  return { ...digest, unread, sk: sourceKey(source), what: describe(source, repo) };
+  const described = source.kind === "range" ? { ...source, count: await rangeCount(exec, repo.top, source.from, source.to) } : source;
+  return { ...digest, unread, sk: sourceKey(source), what: describe(described, repo) };
 }
 
 /** The key the walkthrough of this diff would have, in this model and language, under these preferences, matched against this task. */

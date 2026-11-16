@@ -22,13 +22,13 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 /**
  * @param {ReturnType<typeof import("./walkthrough.js").overlay>} view the walkthrough over the diff as it is now
  * @param {{ title: string, summary: string }} walkthrough the stored walkthrough
- * @param {{ what?: string, model?: string, language?: string, cost?: number | null }} meta
+ * @param {{ what?: string, model?: string, language?: string, cost?: number | null, bounds?: boolean }} meta `bounds: false` leaves out MARK_START and MARK_END
  * @param {ReturnType<typeof import("./walkthrough.js").overlayAsks>} [task] the task's requests over the same view; null leaves them out
  * @param {string} [taskLabel] where the task came from, for the reader
  */
-export function toMarkdown(view, walkthrough, { what = "", model = "", language = "", cost = null } = {}, task = null, taskLabel = "") {
+export function toMarkdown(view, walkthrough, { what = "", model = "", language = "", cost = null, bounds = true } = {}, task = null, taskLabel = "") {
   // The bounds let a walkthrough pasted into a pull request's description be left out when that description is read as a task.
-  const out = [MARK_START, `## ${line(walkthrough.title) || "Walkthrough"}`, ""];
+  const out = [...(bounds ? [MARK_START] : []), `## ${line(walkthrough.title) || "Walkthrough"}`, ""];
   if (walkthrough.summary?.trim()) out.push(walkthrough.summary.trim(), "");
   const about = [what && line(what), model, language, typeof cost === "number" ? `$${cost.toFixed(cost < 0.1 ? 3 : 2)}` : ""].filter(Boolean);
   if (about.length) out.push(`<sub>${about.join(" · ")}</sub>`, "");
@@ -56,7 +56,7 @@ export function toMarkdown(view, walkthrough, { what = "", model = "", language 
     }
     out.push("");
   }
-  return `${out.join("\n").trimEnd()}\n${MARK_END}\n`;
+  return `${out.join("\n").trimEnd()}\n${bounds ? `${MARK_END}\n` : ""}`;
 }
 
 export const MARK_START = "<!-- walkthrough -->", MARK_END = "<!-- /walkthrough -->";

@@ -3,7 +3,7 @@
 
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, VirtualListScrollHandle } from "gpui-base";
-import { spaces, panes, focused, agents, theme, props, closeOverlay, hc, exec, nextCommand, settings, shared, setShared, watchFolder, readTextFile, appHome, run } from "herdr";
+import { spaces, panes, focused, agents, theme, props, closeOverlay, hc, exec, nextCommand, settings, shared, setShared, watchFolder, run } from "herdr";
 import { SCOPES, repoAt, currentHead, defaultBase, baseChoices, recentCommits, olderCommits, commitAt, openRequest, pullRequests, issuesFor, sourceKey, commitMessage, rangeMessages, taskSince } from "./lib/sources.js";
 import { overlay, fileTotals, overlayAsks, asksOf } from "./lib/walkthrough.js";
 import { TASK_MODES, taskChoice, resolveTask, taskKey, taskCacheKey, clip, MAX_TASK_CHARS } from "./lib/task.js";
@@ -13,9 +13,9 @@ import { LANGUAGES, languageOf, fromLocale } from "./lib/languages.js";
 import { MODELS, DEFAULT_MODEL, modelOf } from "./lib/job.js";
 import { estimateTokens, codeKey, placeKey, MAX_PROMPT_CHARS } from "./lib/cache.js";
 import { formatComments, formatQuestion, addComment, sameSpot } from "./lib/comments.js";
-import { toMarkdown, MARK_START, MARK_END } from "./lib/export.js";
+import { toMarkdown } from "./lib/export.js";
 import { readKey, hunkRead, isRead, markStep, unmarkStep, mergeRead, changedSince } from "./lib/read.js";
-import { readDiff, readPreferences, matters, keyFor, findShown, preparePrompt, fits, promptChars, jobOf, startJob, alive, finished, cancelJob, finishJob, copyText, postComment, sendToNotion, notionSetup, claudeVersion, systemLocale, ensureDirs, loadRead, saveRead, transcriptMessages } from "./engine.js";
+import { readDiff, readPreferences, matters, keyFor, findShown, preparePrompt, fits, promptChars, jobOf, startJob, alive, finished, cancelJob, finishJob, copyText, postComment, sendToNotion, notionSetup, settingsOf, claudeVersion, systemLocale, ensureDirs, loadRead, saveRead, transcriptMessages } from "./engine.js";
 import { button, chip, menu, picker, formatElapsed, formatTokens } from "./ui.js";
 import { turnSource, isOpen, firstLine } from "./lib/turns.js";
 import { AUTO, DEFAULT_AUTO, autoOf, startTurns, loadTurns, turnLabel, turnItems, chooseTurn, turnTick, autoGenerate, announce, hookHelp } from "./turnview.js";
@@ -25,8 +25,8 @@ const PREFS = "walkthrough.prefs";
 const MAX_PAGE_LINES = 2500;
 // The walkthrough's summary is cut past this until "Show more".
 const SUMMARY_CHARS = 150;
-// Kept in the footer as long as an error, since a click on it opens the page.
-const NOTION_SENT = "Sent to Notion.";
+/** Sets a key in a session cache, emptied first once it holds 200. */
+const capped = (map, key, value) => { if (map.size >= 200) map.clear(); map.set(key, value); };
 const NOTE_LABEL = { choice: "Decision", upkeep: "Upkeep", gap: "Limitation", divergence: "Divergence", untested: "Untested" };
 const NOTE_ABOUT = {
   choice: "A product or design call made here that could have gone another way",
@@ -104,11 +104,9 @@ export class Walkthrough {
     this.autoWanted = null;
     this.statuses = new Map(); // this tab's agents' last status
     this.background = []; // walkthroughs written without a click, followed to their end: { job }
-    this.confirmPost = false;
+    this.confirm = null; // the footer asks before sending: "post" | "notion"
     this.posting = false;
-    this.confirmNotion = false;
     this.notion = null; // { ntn, parent } once ntn --version has run: Send to Notion is offered
-    this.notionUrl = null; // the page last sent, opened by a click on the note
     this.claude = undefined;
     this.diff = null;
     this.cacheKey = null;
@@ -134,8 +132,7 @@ export class Walkthrough {
     this.readChanged = new Set(); // keys marked or unmarked here and not yet written
     this.unreadOnly = false; // the contents and ← → skip read steps
     this.wrap = false; // long code lines wrap instead of scrolling sideways; starts from settings.lines in mod.json
-    readTextFile(`${appHome()}/mods/walkthrough/mod.json`).then((raw) => { this.wrap = JSON.parse(raw ?? "{}").settings?.lines === "wrap"; cx.notify(); }).catch(() => {});
-    notionSetup().then((n) => { this.notion = n; cx.notify(); });
+    settingsOf("walkthrough").then((own) => { this.wrap = own.lines === "wrap"; cx.notify(); return notionSetup(own.notion); }).then((n) => { this.notion = n; cx.notify(); });
     this.openFiles = new Set();
     this.comments = [];
     this.target = null; // { sk, scope, path, line, kind, code }: the line a comment is being written on
@@ -144,6 +141,7 @@ export class Walkthrough {
     this.menuIndex = 0; // the highlighted row of the open picker, moved by ↑ ↓ and chosen by Enter
     this.menuScroll = VirtualListScrollHandle.new();
     this.sent = null;
+    this.sentUrl = null; // a page the note opens when clicked
     this.seq = 0;
     this.dirty = false;
     this.handle = cx.focus_handle();
@@ -210,7 +208,7 @@ export class Walkthrough {
   /** The source the toolbar describes, or null while one still has to be picked. */
   source() {
     if (this.scope === "branch") return this.base ? { kind: "branch", base: this.base, head: this.head ?? this.repo?.branch ?? "HEAD" } : null;
-    if (this.scope === "commit" && this.commit && this.since) return { kind: "range", from: this.since.hash, to: this.commit.hash, fromSubject: this.since.subject, toSubject: this.commit.subject, count: this.commit.far || this.since.far ? undefined : olderCommits(this.commits, this.commit).findIndex((c) => c.hash === this.since.hash) + 1 };
+    if (this.scope === "commit" && this.commit && this.since) return { kind: "range", from: this.since.hash, to: this.commit.hash, fromSubject: this.since.subject, toSubject: this.commit.subject };
     if (this.scope === "commit") return this.commit ? { kind: "commit", hash: this.commit.hash, subject: this.commit.subject } : null;
     if (this.scope === "pr") return this.pr ? { kind: "pr", number: this.pr.number, title: this.pr.title, head: this.pr.head, base: this.pr.base } : null;
     if (this.scope === "turn") return this.turn ? turnSource(this.turn) : null;
@@ -233,18 +231,15 @@ export class Walkthrough {
     savePrefs({ tasks });
   }
 
-  issueKey(source) {
-    return `${this.repo?.top}\0${sourceKey(source)}\0${source.head ?? this.repo?.branch ?? ""}`;
+  issueKey(source, branch = source.head ?? this.repo?.branch) {
+    return `${this.repo?.top}\0${sourceKey(source)}\0${branch ?? ""}`;
   }
 
-  async issuesOf(source) {
-    const id = this.issueKey(source);
-    if (!this.issueTexts.has(id)) {
-      const issues = await issuesFor(exec, this.repo.top, source, source.head ?? this.repo.branch);
-      if (this.issueTexts.size >= 200) this.issueTexts.clear();
-      this.issueTexts.set(id, issues);
-    }
-    return this.issueTexts.get(id);
+  /** One gh lookup per source serves every caller: the map holds it in flight, then its settled list. */
+  issuesOf(source) {
+    const branch = source.head ?? this.repo.branch, id = this.issueKey(source, branch);
+    if (!this.issueTexts.has(id)) capped(this.issueTexts, id, issuesFor(exec, this.repo.top, source, branch).then((issues) => { this.issueTexts.set(id, issues); return issues; }));
+    return Promise.resolve(this.issueTexts.get(id));
   }
 
   /**
@@ -257,31 +252,32 @@ export class Walkthrough {
     if (!repo || !source) return null;
     const choice = this.taskChoiceFor(sourceKey(source));
     try {
-      // "Your own" and "Off" need no issue: gh is still asked, for the task menu, but the read doesn't wait for it.
-      if (choice.mode === "own" || choice.mode === "off") { this.issuesOf(source).catch(() => {}); return resolveTask({ mode: choice.mode, own: choice.text, source }); }
-      const issues = await this.issuesOf(source);
-      if (choice.mode !== "auto") return resolveTask({ mode: choice.mode, own: choice.text, source, issues });
+      // gh is asked in every mode, for the task menu; only Issue, and Found when nothing else is found, wait for it.
+      const issues = this.issuesOf(source);
+      issues.catch(() => {});
+      if (choice.mode !== "auto") return resolveTask({ mode: choice.mode, own: choice.text, source, issues: choice.mode === "issue" ? await issues : null });
       switch (source.kind) {
         case "turn": return resolveTask({ source, turn: this.turns.find((t) => t.id === source.id) ?? null, turns: this.turns });
         case "pr": {
           // Until the list comes, its description isn't known to be empty: the issue mustn't stand in for it.
           const pr = (this.prs ?? []).find((p) => p.number === source.number) ?? null;
-          return resolveTask({ source, pr, issues: pr ? issues : null });
+          return resolveTask({ source, pr }) ?? (pr && resolveTask({ source, pr, issues: await issues }));
         }
         case "commit": case "range": {
-          const id = source.kind === "commit" ? source.hash : sourceKey(source);
+          const id = sourceKey(source);
+          const [read, field] = source.kind === "commit" ? [() => commitMessage(exec, repo.top, source.hash), "commit"] : [() => rangeMessages(exec, repo.top, source.from, source.to), "messages"];
           if (!this.commitTexts.has(id)) {
             // null: git couldn't read it this time; it is asked again on the next read, not remembered as no message.
-            const message = source.kind === "commit" ? await commitMessage(exec, repo.top, source.hash) : await rangeMessages(exec, repo.top, source.from, source.to);
+            const message = await read();
             if (message === null) return null;
-            if (this.commitTexts.size >= 200) this.commitTexts.clear();
-            this.commitTexts.set(id, message);
+            capped(this.commitTexts, id, message);
           }
-          return resolveTask(source.kind === "commit" ? { source, commit: this.commitTexts.get(id) } : { source, messages: this.commitTexts.get(id) });
+          return resolveTask({ source, [field]: this.commitTexts.get(id) });
         }
         default: {
           const { since, label } = await taskSince(exec, repo.top, source);
-          return resolveTask({ source, prompts: await this.promptsSince(since), since: label, issues });
+          const found = { source, prompts: await this.promptsSince(since), since: label };
+          return resolveTask(found) ?? resolveTask({ ...found, issues: await issues });
         }
       }
     } catch {
@@ -402,7 +398,7 @@ export class Walkthrough {
 
   async tick(cx) {
     // A note on what Copy, Send or Post did fades: soon when it worked, later when it didn't.
-    if (this.sent && Date.now() - this.sentAt >= (/^(✓ )?(Sent|Copied|Posted)\b/.test(this.sent) && this.sent !== NOTION_SENT ? 1000 : 10_000)) { this.sent = null; cx.notify(); }
+    if (this.sent && Date.now() - this.sentAt >= (!this.sentUrl && /^(✓ )?(Sent|Copied|Posted)\b/.test(this.sent) ? 1000 : 10_000)) { this.sent = null; cx.notify(); }
     if (this.ticking || !this.repo) return;
     this.ticking = true;
     try {
@@ -580,7 +576,7 @@ export class Walkthrough {
     this.picking = null;
     this.genError = null;
     this.loading = true; // until the read the change starts has finished
-    this.confirmPost = this.confirmNotion = false;
+    this.confirm = null;
     savePrefs({ scope: key });
     cx.spawn(async (cx) => {
       // Listed again each time the tab is picked: pull requests open, close and move on GitHub.
@@ -592,19 +588,19 @@ export class Walkthrough {
 
   /**
    * The commit and "from" another mod asked for, looked up past the listed ones too
-   * (added after them, `far`: their position counts nothing). One git doesn't know is
-   * dropped with a note; a "from" that isn't an ancestor is refused by the read.
+   * (added after them). One git doesn't know is dropped with a note; a "from" that
+   * isn't an ancestor is refused by the read.
    */
   async openCommit() {
-    const look = async (hash) => {
-      const c = await commitAt(exec, this.repo.top, hash);
-      if (!c) { this.flash(`Couldn't find commit ${hash}.`); return null; }
-      if (!this.commits.some((x) => x.hash === c.hash)) this.commits.push({ ...c, far: true });
-      return this.commits.find((x) => x.hash === c.hash);
-    };
-    const commit = await look(this.want.commit);
-    if (commit) this.commit = commit;
-    if (commit && this.want.since) this.since = await look(this.want.since);
+    const { commit: hash, since: from } = this.want;
+    const [commit, since] = await Promise.all([commitAt(exec, this.repo.top, hash), from ? commitAt(exec, this.repo.top, from) : null]);
+    const listed = (c) => this.commits.find((x) => x.hash === c.hash) ?? (this.commits.push(c), c);
+    if (!commit) this.flash(`Couldn't find commit ${hash}.`);
+    else {
+      this.commit = listed(commit);
+      if (from && !since) this.flash(`Couldn't find commit ${from}.`);
+      if (since) this.since = listed(since);
+    }
     this.want.commit = this.want.since = null;
   }
 
@@ -679,7 +675,7 @@ export class Walkthrough {
     // A "from" that is no longer older than the picked commit would make no range: back to its parent.
     if (kind === "commit") { this.commit = value; if (this.since && !olderCommits(this.commits, value).some((c) => c.hash === this.since.hash)) this.since = null; }
     if (kind === "since") this.since = value;
-    if (kind === "pr") { this.pr = value; this.confirmPost = false; }
+    if (kind === "pr") { this.pr = value; if (this.confirm === "post") this.confirm = null; }
     if (kind === "turn") chooseTurn(this, value);
     if (kind === "agent") { this.agentTo = value; cx.notify(); return; }
     cx.spawn(async (cx) => this.reload(cx));
@@ -721,14 +717,18 @@ export class Walkthrough {
     const mine = this.ownComments();
     if (!agent || !mine.length) return;
     const mixed = new Set(this.diff?.files.map((f) => f.scope)).size > 1;
-    const r = await hc(["send", agent.address, formatComments(mine, this.diff?.what ?? "a change", { mixed })]).catch((e) => ({ code: 1, stderr: String(e?.message ?? e) }));
-    if (r.code === 0) {
-      this.flash(`Sent ${mine.length} comment${mine.length === 1 ? "" : "s"} to ${agent.program?.name ?? agent.address}.`);
-      this.comments = this.comments.filter((c) => !mine.includes(c));
-    } else {
-      this.flash(`Couldn't send: ${(r.stderr || r.stdout || "hc send failed").trim()}`);
-    }
+    if (await this.sendToAgent(agent, formatComments(mine, this.diff?.what ?? "a change", { mixed }), `Sent ${mine.length} comment${mine.length === 1 ? "" : "s"} to ${agent.program?.name ?? agent.address}.`)) this.comments = this.comments.filter((c) => !mine.includes(c));
     cx.notify();
+  }
+
+  /** Pastes text into the agent and presses Enter, then says how it went; whether it worked. */
+  async sendToAgent(agent, text, okNote) {
+    if (this.sendingToAgent) return false;
+    this.sendingToAgent = true; // Enter twice, or Enter and Send, is one send
+    const r = await hc(["send", agent.address, text]).catch((e) => ({ code: 1, stderr: String(e?.message ?? e) }));
+    this.sendingToAgent = false;
+    this.flash(r.code === 0 ? okNote : `Couldn't send: ${(r.stderr || r.stdout || "hc send failed").trim()}`);
+    return r.code === 0;
   }
 
   /** Opens the question box on a step's page; the task page and Not covered have none. */
@@ -747,16 +747,10 @@ export class Walkthrough {
   /** The question goes to the agent, which answers in its terminal: the walkthrough's own model is not asked. */
   async ask(cx) {
     const agent = this.agent(), s = this.view?.steps[this.step], text = this.question.value().trim();
-    if (!agent || !s || !text || this.sendingQuestion) return;
-    this.sendingQuestion = true; // Enter twice, or Enter and Send, is one question
-    const r = await hc(["send", agent.address, formatQuestion(s, this.diff?.what ?? "a change", text)]).catch((e) => ({ code: 1, stderr: String(e?.message ?? e) }));
-    this.sendingQuestion = false;
-    if (r.code === 0) {
-      this.flash(`Sent the question to ${agent.program?.name ?? agent.address}.`);
+    if (!agent || !s || !text) return;
+    if (await this.sendToAgent(agent, formatQuestion(s, this.diff?.what ?? "a change", text), `Sent the question to ${agent.program?.name ?? agent.address}.`)) {
       this.question.set_value("");
       this.closeAsk();
-    } else {
-      this.flash(`Couldn't send: ${(r.stderr || r.stdout || "hc send failed").trim()}`);
     }
     cx.notify();
   }
@@ -774,9 +768,10 @@ export class Walkthrough {
     cx.notify();
   }
 
-  /** Shows a note in the footer until tick clears it. */
-  flash(text) {
+  /** Shows a note in the footer until tick clears it; one with a `url` opens it when clicked. */
+  flash(text, { url } = {}) {
     this.sent = text;
+    this.sentUrl = url ?? null;
     this.sentAt = Date.now();
   }
 
@@ -785,11 +780,11 @@ export class Walkthrough {
    * pull request, its task is left out unless it was that pull request's own
    * description: a prompt to an agent or the reader's own words stay theirs.
    */
-  markdown({ forPost = false } = {}) {
+  markdown({ forPost = false, bounds = true } = {}) {
     const e = this.shown?.entry;
     if (!e || !this.view || !this.diff?.files.length) return null;
     const task = this.taskView && (!forPost || e.task?.from === "pr") ? this.taskView : null;
-    return toMarkdown(this.view, e.walkthrough, { what: this.diff?.what, model: modelOf(e.model).name, language: languageOf(e.language).name, cost: e.cost }, task, e.task?.label ?? "");
+    return toMarkdown(this.view, e.walkthrough, { what: this.diff?.what, model: modelOf(e.model).name, language: languageOf(e.language).name, cost: e.cost, bounds }, task, e.task?.label ?? "");
   }
 
   /** The walkthrough as a comment on the pull request it is of. Asked first: everyone on the pull request sees it. */
@@ -805,26 +800,25 @@ export class Walkthrough {
       this.flash(`Couldn't post: ${String(err?.message ?? err)}`);
     }
     this.posting = false;
-    this.confirmPost = false;
+    this.confirm = null;
     cx.notify();
   }
 
   /** The walkthrough as a new Notion page. Asked first: the task, often the reader's own prompts, goes with it. */
   async sendNotion(cx) {
-    const text = this.markdown(), s = this.source();
+    const text = this.markdown({ bounds: false }), s = this.source();
     if (!text || !this.notion || this.posting) return;
     this.posting = true;
     cx.notify();
     const where = s?.kind === "pr" ? `#${s.number}` : s?.kind === "commit" ? s.hash.slice(0, 12) : s?.kind === "range" ? `${s.from.slice(0, 12)}..${s.to.slice(0, 12)}` : s?.head ?? this.repo.branch ?? "HEAD";
     try {
-      this.notionUrl = await sendToNotion({ ...this.notion, title: [this.shown.entry.walkthrough.title || "Walkthrough", this.repo.name, where].join(" · "), markdown: text.replace(MARK_START, "").replace(MARK_END, "").trim() });
-      this.flash(NOTION_SENT);
+      this.flash("Sent to Notion.", { url: await sendToNotion({ ...this.notion, title: [this.shown.entry.walkthrough.title || "Walkthrough", this.repo.name, where].join(" · "), markdown: text }) });
     } catch (err) {
-      this.notionUrl = err?.url ?? null; // a page made and left empty: the note opens it
-      this.flash(`Couldn't send to Notion: ${String(err?.message ?? err)}`);
+      // A page made and left empty: the note opens it.
+      this.flash(`Couldn't send to Notion: ${String(err?.message ?? err)}`, { url: err?.url });
     }
     this.posting = false;
-    this.confirmNotion = false;
+    this.confirm = null;
     cx.notify();
   }
 
@@ -842,7 +836,7 @@ export class Walkthrough {
       else if (this.editingTask) this.closeTaskEditor();
       else if (this.target) this.target = null;
       else if (this.asking) this.closeAsk();
-      else if ((this.confirmPost || this.confirmNotion) && !this.posting) this.confirmPost = this.confirmNotion = false;
+      else if (this.confirm && !this.posting) this.confirm = null;
       else if (props()?.overlay) closeOverlay(props().overlay);
     } else if (this.view && (k === "right" || k === "j" || k === "n")) this.move(1);
     else if (this.view && (k === "left" || k === "k" || k === "p")) this.move(-1);
@@ -946,17 +940,18 @@ export class Walkthrough {
 
   /** The open picker's rows and where it sits: { items, width, side }. */
   menuOf(kind) {
+    const commitRow = (c, selected) => ({ label: `${c.short}  ${c.subject}`, hint: `${c.author} · ${c.when}`, value: c, selected });
     switch (kind) {
       case "base": return { side: "left", width: 280, items: this.bases.map((b) => ({ label: b, value: b, selected: b === this.base })) };
-      case "commit": return { side: "left", width: 460, items: this.commits.map((c) => ({ label: `${c.short}  ${c.subject}`, hint: `${c.author} · ${c.when}`, value: c, selected: c.hash === this.commit?.hash })) };
+      case "commit": return { side: "left", width: 460, items: this.commits.map((c) => commitRow(c, c.hash === this.commit?.hash)) };
       case "since": return { side: "left", width: 460, items: [{ label: "its parent", hint: "The picked commit alone", value: null, selected: !this.since },
-        ...olderCommits(this.commits, this.commit).map((c) => ({ label: `${c.short}  ${c.subject}`, hint: `${c.author} · ${c.when}`, value: c, selected: c.hash === this.since?.hash }))] };
+        ...olderCommits(this.commits, this.commit).map((c) => commitRow(c, c.hash === this.since?.hash))] };
       case "pr": return { side: "left", width: 480, items: (this.prs ?? []).map((p) => ({
         label: `#${p.number}  ${p.title}`, hint: `${p.author} · ${p.head} → ${p.base}${p.draft ? " · draft" : ""}${p.current ? " · this branch" : ""}`, value: p, selected: p.number === this.pr?.number })) };
       case "turn": return { side: "left", width: 480, items: turnItems(this) };
       case "task": {
         const choice = this.taskChoiceFor(this.diff?.sk), source = this.source();
-        const issues = (source && this.issueTexts.get(this.issueKey(source))) || [];
+        const found = source && this.issueTexts.get(this.issueKey(source)), issues = Array.isArray(found) ? found : []; // a lookup in flight is no issue yet
         const hint = (m) => {
           if (m.key === "issue") return firstLine(issues.map((i) => `#${i.number} ${i.title}`).join(" · "), 60);
           if (m.key === "auto" && choice.mode === "auto") return this.task ? this.task.label : "Nothing found for this change";
@@ -1488,24 +1483,23 @@ export class Walkthrough {
       .child(button(t, "unread-only", this.unreadOnly ? "Show all" : "Unread only", (_e, cx) => { this.unreadOnly = !this.unreadOnly; cx.notify(); },
         { kind: "ghost", small: true, tooltip: this.unreadOnly ? "List every step again (u)" : "List and step through only the steps not read yet (u)" }))
       .child(div().flex_1())
-      .when(this.confirmPost && Boolean(this.pr), (e) => e
+      .when(this.confirm === "post" && Boolean(this.pr), (e) => e
         .child(div().text_size(11.5).text_color(t.foreground).truncate().child(`Post this walkthrough as a comment on #${this.pr.number}? Everyone who can see the pull request will see it.`))
         .child(button(t, "post-yes", this.posting ? "Posting…" : "Post", (_e, cx) => cx.spawn(async (cx) => this.post(cx)), { kind: "solid", small: true, disabled: this.posting }))
-        .child(button(t, "post-no", "Cancel", (_e, cx) => { this.confirmPost = false; cx.notify(); }, { kind: "ghost", small: true, disabled: this.posting })))
-      .when(this.confirmNotion, (e) => e
+        .child(button(t, "post-no", "Cancel", (_e, cx) => { this.confirm = null; cx.notify(); }, { kind: "ghost", small: true, disabled: this.posting })))
+      .when(this.confirm === "notion", (e) => e
         .child(div().text_size(11.5).text_color(t.foreground).truncate().child("Create a Notion page with this walkthrough? Its task, your prompts included, goes with it."))
         .child(button(t, "notion-yes", this.posting ? "Sending…" : "Send", (_e, cx) => cx.spawn(async (cx) => this.sendNotion(cx)), { kind: "solid", small: true, disabled: this.posting }))
-        .child(button(t, "notion-no", "Cancel", (_e, cx) => { this.confirmNotion = false; cx.notify(); }, { kind: "ghost", small: true, disabled: this.posting })))
-      .when(!this.confirmPost && !this.confirmNotion, (e) => e
+        .child(button(t, "notion-no", "Cancel", (_e, cx) => { this.confirm = null; cx.notify(); }, { kind: "ghost", small: true, disabled: this.posting })))
+      .when(!this.confirm, (e) => e
         .when(this.scope === "pr" && Boolean(this.pr), (e) => e.child(button(t, "post", `Post to #${this.pr.number}`,
-          (_e, cx) => { this.confirmPost = true; this.sent = null; cx.notify(); }, { kind: "ghost", small: true, tooltip: "Adds the walkthrough as a comment on the pull request, after you confirm" })))
+          (_e, cx) => { this.confirm = "post"; this.sent = null; cx.notify(); }, { kind: "ghost", small: true, tooltip: "Adds the walkthrough as a comment on the pull request, after you confirm" })))
         .child(button(t, "copy", "Copy as Markdown", (_e, cx) => cx.spawn(async (cx) => this.copy(cx)), { kind: "ghost", small: true, tooltip: "The steps and notes, without the code: for a pull request, a review or a chat" }))
-        .when(Boolean(this.notion), (e) => e.child(button(t, "notion", "Send to Notion", (_e, cx) => { this.confirmNotion = true; this.sent = null; cx.notify(); }, { kind: "ghost", small: true, tooltip: "Creates a Notion page with the walkthrough as Markdown, after you confirm" })))
+        .when(Boolean(this.notion), (e) => e.child(button(t, "notion", "Send to Notion", (_e, cx) => { this.confirm = "notion"; this.sent = null; cx.notify(); }, { kind: "ghost", small: true, tooltip: "Creates a Notion page with the walkthrough as Markdown, after you confirm" })))
         .when(Boolean(this.sent), (e) => {
           const ok = /^(Sent|Copied|Posted)\b/.test(this.sent);
-          const link = this.notionUrl && (this.sent === NOTION_SENT || this.sent.includes(this.notionUrl));
-          return e.child(div().id("sent").text_size(11.5).text_color(ok ? t.ansi2 : t.dim).truncate().child(ok ? `✓ ${this.sent}${link ? " Open it ↗" : ""}` : this.sent)
-            .when(Boolean(link), (e) => e.cursor_pointer().on_click((_e, cx) => cx.open_url(this.notionUrl))));
+          return e.child(div().id("sent").text_size(11.5).text_color(ok ? t.ansi2 : t.dim).truncate().child(ok ? `✓ ${this.sent}${this.sentUrl ? " Open it ↗" : ""}` : this.sent)
+            .when(Boolean(this.sentUrl), (e) => e.cursor_pointer().on_click((_e, cx) => cx.open_url(this.sentUrl))));
         })
         .child(div().text_size(11.5).text_color(n ? t.foreground : t.dim).child(n ? `${n} comment${n === 1 ? "" : "s"}` : "Click a line to comment"))
         .when(n > 0, (e) => e

@@ -249,7 +249,8 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
   cancels too). Post writes the Copy as Markdown text to
   `~/.herdr/walkthrough/pr-comment.md` and runs `gh pr comment N --body-file …`; over
   65,536 characters it refuses. The footer says "Posted the walkthrough to #12." or why not.
-- **Send to Notion** shows only when `<ntn> --version` exits 0, checked once on opening.
+- **Send to Notion** shows only when `<ntn> --version` exits 0, checked on the first opening
+  and kept for the process, per `<ntn>` path.
   `<ntn>` and the parent come from `settings.notion` in `mod.json`, else from the
   notion-notes mod's `mod.json` settings (`ntn`, `parents[0].ref`), else `ntn` and no
   parent (a private page). It asks first, in the footer: "Create a Notion page with this
@@ -305,7 +306,7 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
   their output dropped, each `uuid` once), read at most every 5 s; with none there, the recorded turns' prompts since
   then. Slash commands alone, "[Request interrupted …" and empty prompts are no task. At
   most 6,000 characters (2,000 per message; past that the first and the newest that fit).
-  Your own: per repository and source in the prefs (`tasks`, the newest 100); the text is kept while Found or Off is picked. Off: none. A commit's or range's messages git couldn't read are asked again on the next read; read ones are kept for the session (a range's under its source key).
+  Your own: per repository and source in the prefs (`tasks`, the newest 100); the text is kept while Found or Off is picked. Off: none. A commit's or range's messages git couldn't read are asked again on the next read; read ones are kept for the session, by source key.
   When Found finds nothing there (no prompts, a pull request listed with an
   empty title and description), the GitHub issue is the task; otherwise Found is what it was,
   so its walkthroughs keep their keys. Issue: `issuesFor` (`lib/sources.js`): for a pull
@@ -371,10 +372,10 @@ The contract other mods code against; keep these names. `props()` may hold, besi
 
 `lib/sources.js: openRequest` checks them first: `commit` and `since` must be 7 to 64 hex
 characters (nothing that git could read as an option), `pr` a positive integer, `path` free
-of a leading `/` and of `..` segments; anything else is null and ignored. A hash is resolved
-with `git rev-parse --verify -q <hash>^{commit}` and read with `recentCommits`' `git log`
-format (`commitAt`); one not among the 40 listed is added after them, marked `far`, and a
-range with a far end gives no commit count. A hash git doesn't know leaves the tab as it
+of a leading `/` and of `..` segments; anything else is null and ignored. A hash is read
+with `recentCommits`' `git log -n1 … <hash>^{commit} --`, which fails for one git doesn't know
+(`commitAt`); commit and `since` are looked up together, and one not among the 40 listed is
+added after them. A hash git doesn't know leaves the tab as it
 would have opened, with the note "Couldn't find commit <hash>."; a `since` that isn't an
 ancestor is refused by the range read. "Open as pane / tab" passes `commit`, `since` and `pr`
 on, so the copy shows the same commit, range or pull request.
@@ -388,7 +389,7 @@ Ways in (`OverlaySpec` takes another mod's name and props):
 ## Built from
 
 - `mods/walkthrough/mod.json`: `{ "place": "none", "title": "Walkthrough", "overlay": {
-  "kind": "dialog", "modal": true, "width": 0.9, "height": 0.9 } }`.
+  "kind": "dialog", "modal": true, "width": 0.74, "height": 0.8 } }`.
 - `main.js` (the `View`), `view.js` (state and drawing), `engine.js` (cache and job, the
   only file that touches the disk besides git), `ui.js` (button, chip, menu, dropdown face).
 - `lib/` is plain JavaScript taking `exec` as an argument, tested with `node --test`:
@@ -407,7 +408,8 @@ Ways in (`OverlaySpec` takes another mod's name and props):
   --src-prefix=a/ --dst-prefix=b/ -M`: staged `diff --cached`, unstaged `diff` plus every
   untracked file as `diff --no-index /dev/null <file>`, branch `diff $(merge-base base
   HEAD)` plus untracked, commit `diff <first parent or empty tree> <hash>`, range `diff <from>
-  <to>` (scope `range`, key `range:<from>..<to>`) once `merge-base --is-ancestor <from> <to>`
+  <to>` (scope `range`, key `range:<from>..<to>`, its commit count from `rev-list --count
+  <from>..<to>`) once `merge-base --is-ancestor <from> <to>`
   holds, else refused with a sentence the empty state shows. Base default:
   `origin/HEAD`, else origin/main, origin/master, main, master, trunk, develop.
 - The job: `~/.herdr/walkthrough/jobs/<place>/` with `system.txt`, `prompt.txt`,

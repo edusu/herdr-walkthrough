@@ -6,7 +6,7 @@ import { execFile } from "node:child_process";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { repoAt, currentHead, loadSections, defaultBase, baseChoices, recentCommits, sourceKey, describe, MAX_UNTRACKED_BYTES, pullRequests, issuesFor, ghError, turnsKey, rangeMessages, olderCommits, openRequest, commitAt } from "../mods/walkthrough/lib/sources.js";
+import { repoAt, currentHead, loadSections, defaultBase, baseChoices, recentCommits, sourceKey, describe, MAX_UNTRACKED_BYTES, pullRequests, issuesFor, ghError, turnsKey, rangeMessages, rangeCount, olderCommits, openRequest, commitAt } from "../mods/walkthrough/lib/sources.js";
 import { buildDigest } from "../mods/walkthrough/lib/digest.js";
 import { jobScript, readOutcome } from "../mods/walkthrough/lib/job.js";
 import { chmodSync, readFileSync, existsSync, utimesSync } from "node:fs";
@@ -133,6 +133,8 @@ test("a range: the commits after from up to to, refused when from is not an ance
   await assert.rejects(loadSections(exec, repo, { kind: "range", from: three, to: one }), /not an ancestor/);
   // The merge's generated subject says nothing, so it drops out; the side branch's commit stays.
   assert.deepEqual(await rangeMessages(exec, repo, one, three), ["Two\n\nWith a body.", "Side", "Three"]);
+  // Two, Side, the merge and Three: counted by git, not by place in a list.
+  assert.equal(await rangeCount(exec, repo, one, three), 4);
   rmSync(repo, { recursive: true, force: true });
 });
 

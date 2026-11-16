@@ -72,6 +72,8 @@ Edits in 1 file that no step explains:
 <!-- /walkthrough -->
 `);
   assert.doesNotMatch(md, /\+new|-old/);
+  // Without the bounds: the same text, for a page that isn't a pull request's description.
+  assert.equal(toMarkdown(overlay(w, files), w, { what: "Uncommitted local changes.", model: "Haiku", language: "English", cost: 0.0021, bounds: false }), md.replace("<!-- walkthrough -->\n", "").replace("<!-- /walkthrough -->\n", ""));
 });
 
 test("an outdated step says so, and nothing left over means no Not covered section", () => {

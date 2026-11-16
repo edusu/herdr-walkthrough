@@ -220,7 +220,7 @@ of the agent you opened it over, and a pane knows which turns are its tab's.
 
 **Nothing is sent to a model until you press Generate**, except an agent's last turn while
 Auto is on (Haiku only, up to 300 hunks). Nothing is posted anywhere until you press
-**Post** or **Send to Notion** and confirm. On opening, `ntn --version` runs once, locally, to
+**Post** or **Send to Notion** and confirm. The first time it opens, `ntn --version` runs once, locally, to
 tell whether to offer Send to Notion; nothing reaches Notion then.
 
 - **Opening the walkthrough only reads git.** On the Pull request tab it also asks `gh` for
