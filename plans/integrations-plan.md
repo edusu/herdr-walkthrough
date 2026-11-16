@@ -32,7 +32,7 @@ source and props handling, S5 on S4). Part B is other repositories and needs S6 
 | S4 | Task from a GitHub issue | A pull request's closing issues, or the issue a branch name points at, can be the task; "Matched against" offers it | Done |
 | S5 | Send to Notion | **Send to Notion** creates a page holding the walkthrough's Markdown and shows its link | Done |
 | S6 | Open from other mods | Props `{scope, commit, since, pr, path}` open the walkthrough on that commit, range, pull request or file's step; documented as the contract | Done |
-| B1 | Branch PR opens it | In `herdr-mods/branch-pr`, a PR's header has **Walkthrough**, shown only when the mod is installed | Pending |
+| B1 | Branch PR opens it | In `herdr-mods/branch-pr`, a PR's header has **Walkthrough**, shown only when the mod is installed | Done |
 | B2 | Git Graph opens it | In `herdr-git-graph`, a commit's right-click menu has "Walkthrough of this commit" and "Walkthrough from this commit to HEAD" | Pending |
 
 ## Repository facts
