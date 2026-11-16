@@ -82,6 +82,9 @@ says *where* a request shows up, never whether it's done well.
 
 - **Comment on any line**, then **Send** pastes your comments, with their code, into an
   agent in the same space.
+- **Ask** on a step pastes your question, with the step's title, explanation and files, into
+  an agent in the same space. The agent answers in its terminal; the walkthrough's model
+  isn't asked.
 - **Copy as Markdown** for a pull request description, a review or a chat. The code stays
   out (the diff is already beside it). It sits between hidden `<!-- walkthrough -->`
   marks, so a description holding one isn't read back as the task.
@@ -110,7 +113,8 @@ says *where* a request shows up, never whether it's done well.
 | **u** | Unread only: step through only what you haven't read |
 | **w** | Wrap long code lines to fit, or scroll them sideways (also the **Wrap lines** button) |
 | **t** | The task page (**←** from the first step goes there too) |
-| **Esc** | Close a picker, the task editor or a comment, then the dialog |
+| **a** | Ask the agent about the step (also the step's **Ask** button) |
+| **Esc** | Close a picker, the task editor, a comment or a question, then the dialog |
 
 <details>
 <summary>Menus and commands for your own keys</summary>
@@ -119,7 +123,7 @@ says *where* a request shows up, never whether it's done well.
 | --- | --- |
 | **Matched against** menu | Found (default), Your own… (write it), or Off; kept per repository and tab |
 | Last turn → **⚡ Auto** | On (default): write the last turn's walkthrough without a click. One click turns it off: only on Generate |
-| `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.wrap`, `.task` | Generate, cancel, move, Copy as Markdown, Unread only, wrap lines and write your own task |
+| `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.wrap`, `.task`, `.ask` | Generate, cancel, move, Copy as Markdown, Unread only, wrap lines, write your own task and ask about the step |
 | `settings.lines` in `mod.json` | `"scroll"` (default) or `"wrap"`: how long lines start. [Better Config](https://github.com/munza/herdr-mods/tree/main/better-config) shows it |
 
 </details>

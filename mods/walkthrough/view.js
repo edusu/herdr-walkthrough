@@ -12,7 +12,7 @@ import { tokenize } from "./lib/highlight.js";
 import { LANGUAGES, languageOf, fromLocale } from "./lib/languages.js";
 import { MODELS, DEFAULT_MODEL, modelOf } from "./lib/job.js";
 import { estimateTokens, codeKey, placeKey, MAX_PROMPT_CHARS } from "./lib/cache.js";
-import { formatComments, addComment, sameSpot } from "./lib/comments.js";
+import { formatComments, formatQuestion, addComment, sameSpot } from "./lib/comments.js";
 import { toMarkdown } from "./lib/export.js";
 import { readKey, hunkRead, isRead, markStep, unmarkStep, mergeRead, changedSince } from "./lib/read.js";
 import { readDiff, readPreferences, matters, keyFor, findShown, preparePrompt, fits, promptChars, jobOf, startJob, alive, finished, cancelJob, finishJob, copyText, postComment, claudeVersion, systemLocale, ensureDirs, loadRead, saveRead, transcriptMessages } from "./engine.js";
@@ -140,10 +140,15 @@ export class Walkthrough {
     this.handle = cx.focus_handle();
     this.handle.focus();
     this.input = InputState.new({ placeholder: "Comment on this line, then Enter" });
-    this.typing = false; // false, or the input typed in: "comment" or "task"
+    this.typing = false; // false, or the input typed in: "comment", "question" or "task"
     this.input.on("focus", (_e, cx) => { this.typing = "comment"; cx.notify(); });
     this.input.on("blur", (_e, cx) => { this.typing = false; cx.notify(); });
     this.input.on("submit", (_e, cx) => { this.saveComment(); cx.notify(); });
+    this.asking = false; // the question box under the step's text is open
+    this.question = InputState.new({ placeholder: "Ask the agent about this step, then Enter" });
+    this.question.on("focus", (_e, cx) => { this.typing = "question"; cx.notify(); });
+    this.question.on("blur", (_e, cx) => { this.typing = false; cx.notify(); });
+    this.question.on("submit", (_e, cx) => cx.spawn(async (cx) => this.ask(cx)));
     this.taskText = TextareaState.new({ placeholder: "What should this change do? One request per line works best.", rows: 4 });
     this.taskText.set_auto_grow(3, 10);
     this.taskText.on("focus", (_e, cx) => { this.typing = "task"; cx.notify(); });
@@ -174,7 +179,7 @@ export class Walkthrough {
       await autoGenerate(this, cx, this.turn); // the turn the tab shows: this terminal's newest, else the newest
     });
     cx.timer.every(1000, (cx) => this.tick(cx));
-    // Commands for keys.json: walkthrough.generate, .cancel, .next, .prev, .copy, .unread, .wrap, .task (write your own).
+    // Commands for keys.json: walkthrough.generate, .cancel, .next, .prev, .copy, .unread, .wrap, .task (write your own), .ask.
     cx.spawn(async (cx) => {
       for (;;) {
         const name = String(await nextCommand()).replace(/^walkthrough\./, "").split(":")[0];
@@ -186,6 +191,7 @@ export class Walkthrough {
         else if (name === "unread") this.unreadOnly = !this.unreadOnly;
         else if (name === "wrap") this.wrap = !this.wrap;
         else if (name === "task") this.chooseTask("own", cx);
+        else if (name === "ask") this.openAsk();
         cx.notify();
       }
     });
@@ -667,6 +673,34 @@ export class Walkthrough {
     cx.notify();
   }
 
+  /** Opens the question box on a step's page; the task page and Not covered have none. */
+  openAsk() {
+    if (!this.view?.steps[this.step]) return;
+    this.asking = true;
+    this.question.focus();
+  }
+
+  closeAsk() {
+    this.asking = false;
+    this.typing = false;
+    this.handle.focus();
+  }
+
+  /** The question goes to the agent, which answers in its terminal: the walkthrough's own model is not asked. */
+  async ask(cx) {
+    const agent = this.agent(), s = this.view?.steps[this.step], text = this.question.value().trim();
+    if (!agent || !s || !text) return;
+    const r = await hc(["send", agent.address, formatQuestion(s, this.diff?.what ?? "a change", text)]).catch((e) => ({ code: 1, stderr: String(e?.message ?? e) }));
+    if (r.code === 0) {
+      this.flash(`Sent the question to ${agent.program?.name ?? agent.address}.`);
+      this.question.set_value("");
+      this.closeAsk();
+    } else {
+      this.flash(`Couldn't send: ${(r.stderr || r.stdout || "hc send failed").trim()}`);
+    }
+    cx.notify();
+  }
+
   /** The walkthrough shown, as Markdown on the clipboard: for a pull request, a review or a chat. */
   async copy(cx) {
     const text = this.markdown();
@@ -716,9 +750,10 @@ export class Walkthrough {
   }
 
   onKey(e, cx) {
-    // While typing, keys are the text's; only Esc in the task editor leaves it (a comment box keeps its own).
+    // While typing, keys are the text's; only Esc in the task editor or the question box leaves it (a comment box keeps its own).
     if (this.typing) {
       if (e.key === "escape" && this.typing === "task" && this.editingTask) { this.closeTaskEditor(); cx.notify(); }
+      else if (e.key === "escape" && this.typing === "question") { this.closeAsk(); cx.notify(); }
       return;
     }
     const k = e.key;
@@ -727,6 +762,7 @@ export class Walkthrough {
       if (this.picking) this.picking = null;
       else if (this.editingTask) this.closeTaskEditor();
       else if (this.target) this.target = null;
+      else if (this.asking) this.closeAsk();
       else if (this.confirmPost && !this.posting) this.confirmPost = false;
       else if (props()?.overlay) closeOverlay(props().overlay);
     } else if (this.view && (k === "right" || k === "j" || k === "n")) this.move(1);
@@ -734,6 +770,7 @@ export class Walkthrough {
     else if (this.view && k === "x") this.toggleRead();
     else if (this.view && k === "u") this.unreadOnly = !this.unreadOnly;
     else if (this.view && k === "w") this.wrap = !this.wrap;
+    else if (this.view?.steps[this.step] && k === "a") this.openAsk();
     else if (this.taskView && k === "t") this.go(-1);
     else return;
     cx.notify();
@@ -1188,6 +1225,7 @@ export class Walkthrough {
     return v_flex().id(`page-${s.id}-${this.shown.entry.generatedAt}`).flex_1().min_h(0).overflow_y_scrollbar().px(22).py(16).gap(10)
       .child(h_flex().gap(8).items_center()
         .child(div().flex_1().text_size(10.5).font_semibold().text_color(t.dim).child(`${part.title.toUpperCase()}  ·  STEP ${s.position} OF ${total}`))
+        .child(button(t, "ask", "Ask", (_e, cx) => { this.asking ? this.closeAsk() : this.openAsk(); cx.notify(); }, { kind: "ghost", small: true, tooltip: "Ask the agent about this step: it answers in its terminal (a)" }))
         .child(button(t, "read-toggle", read ? "✓ Read" : "Mark read", (_e, cx) => { this.toggleRead(); cx.notify(); }, {
           kind: "ghost", small: true, disabled: s.outdated,
           tooltip: s.outdated ? "Its code has changed: regenerate to read it as it is now" : read ? "Mark unread (x)" : "Mark read (x)",
@@ -1205,6 +1243,7 @@ export class Walkthrough {
           : [toTask(`for-${s.id}-none`, chip(t, "Not tied to a request", null, t.raised).tooltip("No request in the task points at this step: supporting work, or work the task doesn't mention."))]));
       })
       .child(div().max_w(820).text_size(13.5).line_height(1.6).child(s.text))
+      .when(this.asking, (e) => e.child(this.questionBox(t)))
       .when(s.notes.length > 0, (e) => e.child(v_flex().w_full().max_w(820).gap(6).children(s.notes.map((n) =>
         h_flex().w_full().gap(8).items_start().child(chip(t, NOTE_LABEL[n.kind], t.blocked, t.blocked + "12").tooltip(NOTE_ABOUT[n.kind])).child(div().flex_1().min_w(0).pt(1).text_size(12.5).line_height(1.5).text_color(t.muted).child(n.text))))))
       // The banner above and the Outdated chip say it already; this says how much.
@@ -1343,6 +1382,15 @@ export class Walkthrough {
       .child(div().flex_1().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(this.input).w_full()))
       .child(button(t, "comment-save", "Add", (_e, cx) => { this.saveComment(); cx.notify(); }, { kind: "solid", small: true }))
       .child(button(t, "comment-cancel", "Cancel", (_e, cx) => { this.target = null; this.handle.focus(); cx.notify(); }, { kind: "ghost", small: true }));
+  }
+
+  questionBox(t) {
+    const agent = this.agent();
+    return h_flex().max_w(820).px(10).py(6).gap(8).items_center().rounded(6).bg(t.popover).border_1().border_color(t.accent)
+      .child(div().flex_1().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(this.question).w_full()))
+      .child(picker(t, "pick-agent-ask", agent ? `${agent.program?.name ?? "Agent"} · ${agent.address}` : "No agent here", (_e, cx) => { this.togglePicker("agent"); cx.notify(); }, { disabled: !agent }))
+      .child(button(t, "ask-send", "Send", (_e, cx) => cx.spawn(async (cx) => this.ask(cx)), { kind: "solid", small: true, disabled: !agent, tooltip: "Pastes the question, with the step's title, text and files, into the agent and presses Enter" }))
+      .child(button(t, "ask-cancel", "Cancel", (_e, cx) => { this.closeAsk(); cx.notify(); }, { kind: "ghost", small: true }));
   }
 
   footer(t) {

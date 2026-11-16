@@ -138,7 +138,7 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
        such step. With no concrete request: a `muted` notice instead of the rows. A new
        walkthrough with a task opens here while none of its steps is read.
      - Page, scrolling, padding 16px 22px, gap 10: "PART · STEP 2 OF 5" 10.5px semibold
-       `dim`, at its right a small ghost "Mark read" / "✓ Read" (disabled on an outdated
+       `dim`, at its right a small ghost "Ask" and "Mark read" / "✓ Read" (disabled on an outdated
        step); the title 17px semibold with tinted chips **Key change** (`accent` on `accent`
        + `14`), **Context** (on `raised`), **Outdated** (`blocked` on `blocked` + `14`);
        with a task that names requests, a chip per request the step serves, "For: Retry
@@ -219,6 +219,13 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
   (`path:line` `` `code` ``: text) into the chosen agent with `hc send` (which presses
   Enter), then clears them. Agents offered: those in this space, the one the dialog opened
   over first, then the most recently active.
+- Ask: **Ask** on a step's page (or `a`, or `walkthrough.ask`) opens a box under the
+  step's text (input, the agent dropdown, Send, Cancel; Enter sends, Esc closes). Send
+  pastes "Question about step N, "title", of the walkthrough of …", the step's text
+  (clipped), "Files: path (lines 1-3, 10-12)" from the hunks still found (no code), an
+  outdated note when it applies, then the question, with `hc send`, and flashes "Sent the
+  question to …". The agent answers in its terminal; the walkthrough's model is not asked
+  and nothing is shown in the dialog.
 - **Copy as Markdown** puts the walkthrough on the clipboard (through
   `~/.herdr/walkthrough/clipboard.md` and `pbcopy`, else `wl-copy` or `xclip`): `## title`,
   the summary, a `<sub>` line (what was read · model · language · cost), then per part a
@@ -319,8 +326,8 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
   `shared("walkthrough.prefs")`. The first language is the system's (`defaults read -g
   AppleLanguages`, else `$LANG`).
 - Keys from `keys.json`: `cmd-shift-e` → `mod.open:walkthrough`. Mod commands:
-  `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.task` (opens the task editor). In the view, `x`
-  marks the step read or unread, `u` toggles Unread only and `t` opens the task page.
+  `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.task` (opens the task editor), `.ask` (opens the question box). In the view, `x`
+  marks the step read or unread, `u` toggles Unread only, `t` opens the task page and `a` the question box.
 
 ## Built from
 
@@ -523,6 +530,8 @@ without copying again). It prints nothing and always exits 0.
   "its parent" again shows the single commit's cached walkthrough.
 - Clicking a line, typing and Enter adds a comment under it; Send pastes it into the
   chosen agent.
+- `a` on a step, a question and Enter: the agent gets the step's title, text and files with
+  the question; the footer says "Sent the question to …".
 - With the hooks added, a prompt that edits a file and adds one shows on Last turn as
   exactly those two files, not edits made before or after it; the repository's
   `.git/index` and `.git/objects` are byte for byte and time for time as they were.

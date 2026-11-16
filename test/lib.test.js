@@ -10,7 +10,7 @@ import { fromLocale, languageOf } from "../mods/walkthrough/lib/languages.js";
 import { cacheKey, codeKey, deadline, placeKey } from "../mods/walkthrough/lib/cache.js";
 import { worthReading } from "../mods/walkthrough/lib/sources.js";
 import { readOutcome, jobScript, isRunCommand } from "../mods/walkthrough/lib/job.js";
-import { formatComments, addComment, sameSpot } from "../mods/walkthrough/lib/comments.js";
+import { formatComments, addComment, sameSpot, formatQuestion } from "../mods/walkthrough/lib/comments.js";
 
 const PATCH = `diff --git a/src/a.js b/src/a.js
 index 1..2 100644
@@ -354,6 +354,23 @@ test("comments: one per line, formatted with their code", () => {
   assert.equal(list.length, 2);
   assert.equal(formatComments(list, "uncommitted changes"),
     "Comments from reading the walkthrough of uncommitted changes\n- a.js:3 `x = 1;`: why one?\n- a.js:3 (removed line) `x = 0;`: was fine");
+});
+
+test("a question about a step: its place, text and files with their lines, then the question", () => {
+  const a = { path: "src/a.js", scope: "working" }, b = { path: "src/b.js", scope: "working" };
+  const step = { position: 2, title: "Retry failed uploads", text: "Uploads are retried three times.", outdated: false, missing: 0, found: [
+    { file: a, hunk: { oldStart: 1, oldLines: 3, newStart: 1, newLines: 3 } },
+    { file: a, hunk: { oldStart: 9, oldLines: 2, newStart: 10, newLines: 3 } },
+    { file: b, hunk: { oldStart: 4, oldLines: 2, newStart: 4, newLines: 0 } },
+  ] };
+  assert.equal(formatQuestion(step, "uncommitted changes", "  why three?  "),
+    'Question about step 2, "Retry failed uploads", of the walkthrough of uncommitted changes\nThe step says: Uploads are retried three times.\nFiles: src/a.js (lines 1-3, 10-12), src/b.js (lines 4-5 removed)\nQuestion: why three?');
+  const stale = formatQuestion({ ...step, outdated: true, missing: 1, found: step.found.slice(0, 1) }, "commit abc", "still true?");
+  assert.match(stale, /\nFiles: src\/a\.js \(lines 1-3\)\nNote: the step is outdated: 1 of its hunks has changed or is gone since it was written\.\nQuestion: still true\?$/);
+  // The question goes as typed, backticks and newlines included; a long step is clipped, the question never.
+  const long = formatQuestion({ ...step, text: "x".repeat(5000) }, "a change", "is `retry()` safe?\nand ```this```?");
+  assert.ok(long.endsWith("Question: is `retry()` safe?\nand ```this```?"));
+  assert.ok(long.length < 2500);
 });
 
 test("a hunk's header in words: where it starts, what was skipped, and the function it sits in", () => {
