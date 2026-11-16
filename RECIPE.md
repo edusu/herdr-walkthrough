@@ -186,7 +186,8 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
 ## How it behaves
 
 - Opening reads the focused pane's folder (`focused()`, `panes()`), else the space's
-  folder; `props().folder` and `props().scope` override. Nothing is generated on open.
+  folder; `props().folder`, `props().scope` and the props under "Opening it from another
+  mod" override. Nothing is generated on open.
 - The diff is re-read when files change (`watchFolder` on the repo marks it dirty unless
   every changed path is in `node_modules`, in `.git` other than its index, HEAD and refs,
   or ignored by `git check-ignore`; a 1s tick re-reads) and when the scope, base, commit, its "from", model or language changes. A newer read
@@ -353,6 +354,36 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
 - Keys from `keys.json`: `cmd-shift-e` → `mod.open:walkthrough`. Mod commands:
   `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.task` (opens the task editor), `.ask` (opens the question box). In the view, `x`
   marks the step read or unread, `u` toggles Unread only, `t` opens the task page and `a` the question box.
+
+## Opening it from another mod
+
+The contract other mods code against; keep these names. `props()` may hold, besides the
+`overlay`, `pane`, `tab` and `from` the mod sets itself:
+
+- `folder` and `scope` (a key of `SCOPES`), as above.
+- `commit`: with `scope: "commit"`, the commit shown. `since`: with `commit`, the range's
+  "from" (not called `from`: that prop is the terminal it was opened over).
+- `pr`: with `scope: "pr"`, a positive integer, picked once the list is read; when it isn't
+  open, nothing is picked and the empty state says "#N isn't among the open pull requests."
+- `path`: repository-relative. The first time a walkthrough is shown, the first step with a
+  hunk in that file is opened instead of the first unread one; none: a note "No step touches
+  <path>."
+
+`lib/sources.js: openRequest` checks them first: `commit` and `since` must be 7 to 64 hex
+characters (nothing that git could read as an option), `pr` a positive integer, `path` free
+of a leading `/` and of `..` segments; anything else is null and ignored. A hash is resolved
+with `git rev-parse --verify -q <hash>^{commit}` and read with `recentCommits`' `git log`
+format (`commitAt`); one not among the 40 listed is added after them, marked `far`, and a
+range with a far end gives no commit count. A hash git doesn't know leaves the tab as it
+would have opened, with the note "Couldn't find commit <hash>."; a `since` that isn't an
+ancestor is refused by the range read. "Open as pane / tab" passes `commit`, `since` and `pr`
+on, so the copy shows the same commit, range or pull request.
+
+Ways in (`OverlaySpec` takes another mod's name and props):
+`openOverlay({ mod: "walkthrough", kind: "dialog", modal: true, width: 0.74, height: 0.8, props })`,
+`run("pane.split", { direction: "right", mod: "walkthrough", props })`,
+`run("tab.new", { name: "Walkthrough", mod: "walkthrough", props })`, or from a shell
+`herdr-app do pane.split --direction right --mod walkthrough --props '{"folder":"/path/to/repo","scope":"commit","commit":"1c60bcd"}'`.
 
 ## Built from
 

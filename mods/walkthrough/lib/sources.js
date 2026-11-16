@@ -332,14 +332,32 @@ export async function baseChoices(exec, top, current) {
   return r.out.split("\n").map((s) => s.trim()).filter((s) => s && s !== current && !s.endsWith("/HEAD") && s !== "origin");
 }
 
-/** The latest commits on HEAD: { hash, short, subject, author, when }. */
-export async function recentCommits(exec, top, count = 40) {
-  const r = await git(exec, top, ["log", `-n${count}`, "--format=%H%x1f%h%x1f%s%x1f%an%x1f%cr"]);
+/** The latest commits on HEAD (or on `rev`): { hash, short, subject, author, when }. */
+export async function recentCommits(exec, top, count = 40, rev = null) {
+  const r = await git(exec, top, ["log", `-n${count}`, "--format=%H%x1f%h%x1f%s%x1f%an%x1f%cr", ...(rev ? [rev, "--"] : [])]);
   if (!r.ok) return [];
   return r.out.split("\n").filter(Boolean).map((line) => {
     const [hash, short, subject, author, when] = line.split("\x1f");
     return { hash, short, subject, author, when };
   });
+}
+
+/** A commit by an abbreviated or full hash (a prop's checked by openRequest first), in recentCommits' shape, or null when git knows none. */
+export async function commitAt(exec, top, hash) {
+  const r = await git(exec, top, ["rev-parse", "--verify", "-q", `${hash}^{commit}`]);
+  return r.ok ? (await recentCommits(exec, top, 1, r.out.trim()))[0] ?? null : null;
+}
+
+/**
+ * What another mod's props ask for (RECIPE.md, "Opening it from another mod"),
+ * each null unless well formed: hashes are hex only, so none reaches git as an
+ * option; a path stays inside the repository.
+ */
+export function openRequest(props) {
+  const p = props ?? {};
+  const hash = (h) => (typeof h === "string" && /^[0-9a-f]{7,64}$/i.test(h) ? h : null);
+  const path = typeof p.path === "string" && p.path && !p.path.startsWith("/") && !p.path.split("/").includes("..") ? p.path : null;
+  return { scope: SCOPES.some((s) => s.key === p.scope) ? p.scope : null, commit: hash(p.commit), since: hash(p.since), pr: Number.isInteger(p.pr) && p.pr > 0 ? p.pr : null, path };
 }
 
 /** The commits listed after the picked one: older on HEAD, so a range can start at any of them. */

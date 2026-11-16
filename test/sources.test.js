@@ -6,7 +6,7 @@ import { execFile } from "node:child_process";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { repoAt, currentHead, loadSections, defaultBase, baseChoices, recentCommits, sourceKey, describe, MAX_UNTRACKED_BYTES, pullRequests, issuesFor, ghError, turnsKey, rangeMessages, olderCommits } from "../mods/walkthrough/lib/sources.js";
+import { repoAt, currentHead, loadSections, defaultBase, baseChoices, recentCommits, sourceKey, describe, MAX_UNTRACKED_BYTES, pullRequests, issuesFor, ghError, turnsKey, rangeMessages, olderCommits, openRequest, commitAt } from "../mods/walkthrough/lib/sources.js";
 import { buildDigest } from "../mods/walkthrough/lib/digest.js";
 import { jobScript, readOutcome } from "../mods/walkthrough/lib/job.js";
 import { chmodSync, readFileSync, existsSync, utimesSync } from "node:fs";
@@ -142,6 +142,22 @@ test('the "from" picker offers the commits older than the picked one', () => {
   assert.deepEqual(olderCommits(commits, { hash: "a" }), []);
   assert.deepEqual(olderCommits(commits, { hash: "x" }), []);
   assert.deepEqual(olderCommits(commits, null), []);
+});
+
+test("another mod's props: what can't be trusted is dropped", () => {
+  assert.deepEqual(openRequest({ folder: "/r", scope: "commit", commit: "ABCDEF1", since: "0123456789abcdef0123456789abcdef01234567", pr: 12, path: "src/a b.js" }),
+    { scope: "commit", commit: "ABCDEF1", since: "0123456789abcdef0123456789abcdef01234567", pr: 12, path: "src/a b.js" });
+  const none = { scope: null, commit: null, since: null, pr: null, path: null };
+  assert.deepEqual(openRequest(undefined), none);
+  assert.deepEqual(openRequest({ scope: "all", commit: "--output=/tmp/x", since: "abc12", pr: -3, path: "/etc/passwd" }), none);
+  assert.deepEqual(openRequest({ commit: "HEAD~1", since: "abcdefg", pr: "12", path: "a/../../b" }), none);
+  assert.deepEqual(openRequest({ commit: "a".repeat(65), pr: 1.5, path: "" }), none);
+});
+
+test("a commit by any hash git knows, past the listed ones, in their shape", async () => {
+  const [listed] = await recentCommits(exec, dir, 1);
+  assert.deepEqual(await commitAt(exec, dir, listed.hash.slice(0, 7)), listed);
+  assert.equal(await commitAt(exec, dir, "0000000"), null);
 });
 
 test("a branch against its base: committed and uncommitted work, not the base's", async () => {

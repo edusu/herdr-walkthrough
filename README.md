@@ -135,11 +135,38 @@ says *where* a request shows up, never whether it's done well.
 </details>
 
 To keep it beside an agent instead of over it, click **Open as pane** (or **Open as tab**) in
-the dialog's header. The copy keeps the folder, the scope, and the tab and agent it was opened
-over, so it still watches that tab's agents. From the command line:
+the dialog's header. The copy keeps the folder, the scope, the commit, range or pull request, and the tab and
+agent it was opened over, so it still watches that tab's agents. From the command line:
 
 ```sh
 herdr-app do pane.split --direction right --mod walkthrough --props '{"scope":"branch"}'
+```
+
+## Opening it from another mod
+
+Another mod opens it with props; every one is optional, and one that is malformed or
+doesn't resolve is dropped (with a note in the footer, where there is one), so the tab opens
+as it would have.
+
+| Prop | What it does |
+| --- | --- |
+| `folder` | The repository to read (any folder in it); else the focused terminal's |
+| `scope` | The tab: `uncommitted`, `staged`, `unstaged`, `branch`, `commit`, `pr` or `turn` |
+| `commit` | With `scope: "commit"`, the commit shown: 7 to 64 hex characters, any commit git knows, not only the latest 40 |
+| `since` | With `commit`, its **from**: everything after it up to `commit`. It must be an ancestor of `commit` |
+| `pr` | With `scope: "pr"`, the pull request's number. One that isn't open says so instead of picking another |
+| `path` | A path inside the repository, as git prints it: the walkthrough opens on the first step touching that file, once |
+
+Three ways in, all with the same props:
+
+```js
+openOverlay({ mod: "walkthrough", kind: "dialog", modal: true, width: 0.74, height: 0.8, props });
+run("pane.split", { direction: "right", mod: "walkthrough", props });
+run("tab.new", { name: "Walkthrough", mod: "walkthrough", props });
+```
+
+```sh
+herdr-app do pane.split --direction right --mod walkthrough --props '{"folder":"/path/to/repo","scope":"commit","commit":"1c60bcd"}'
 ```
 
 ## Last turn
@@ -288,7 +315,8 @@ If the mod was renamed when it was added (a name clash), replace the renamed fol
   commit, a range or a Last turn gets none.
 - **Last turn** records Claude Code's turns only, and writes walkthroughs without a click
   only while the walkthrough is open.
-- **Commit** and its **from** offer the latest 40 commits on HEAD; an older one can't be picked.
+- **Commit** and its **from** offer the latest 40 commits on HEAD; an older one can't be picked
+  by hand, only opened from another mod (`commit`, `since`).
 - **Comments** are kept while the walkthrough is open, and sent with Enter.
 - **Read marks** are saved once a second: one made in the last second before Herdr quits
   can be lost. A step counts as changed since you read it when part of it was read, or when

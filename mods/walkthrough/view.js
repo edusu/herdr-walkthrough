@@ -4,7 +4,7 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, VirtualListScrollHandle } from "gpui-base";
 import { spaces, panes, focused, agents, theme, props, closeOverlay, hc, exec, nextCommand, settings, shared, setShared, watchFolder, readTextFile, appHome, run } from "herdr";
-import { SCOPES, repoAt, currentHead, defaultBase, baseChoices, recentCommits, olderCommits, pullRequests, issuesFor, sourceKey, commitMessage, rangeMessages, taskSince } from "./lib/sources.js";
+import { SCOPES, repoAt, currentHead, defaultBase, baseChoices, recentCommits, olderCommits, commitAt, openRequest, pullRequests, issuesFor, sourceKey, commitMessage, rangeMessages, taskSince } from "./lib/sources.js";
 import { overlay, fileTotals, overlayAsks, asksOf } from "./lib/walkthrough.js";
 import { TASK_MODES, taskChoice, resolveTask, taskKey, taskCacheKey, clip, MAX_TASK_CHARS } from "./lib/task.js";
 import { numberLines, hunkLabel, numberDigits } from "./lib/hunks.js";
@@ -72,6 +72,7 @@ const COVERAGE_ABOUT = {
 export class Walkthrough {
   init(cx) {
     const p = props() ?? {};
+    this.want = openRequest(p); // another mod's commit, since, pr and path: each used once, then null
     const here = location();
     this.folder = p.folder ?? here.folder;
     this.space = here.space;
@@ -81,7 +82,7 @@ export class Walkthrough {
     // A copy opened as its own tab gets the tab it came from: that tab has the agents to watch.
     this.tab = p.tab || (p.pane && panes().find((x) => x.pane === p.pane)?.tab) || focused()?.tab || null; // a pane watches this tab's agents
     const saved = prefs();
-    this.scope = SCOPES.some((s) => s.key === p.scope) ? p.scope : SCOPES.some((s) => s.key === saved.scope) ? saved.scope : "uncommitted";
+    this.scope = this.want.scope ?? (SCOPES.some((s) => s.key === saved.scope) ? saved.scope : "uncommitted");
     this.model = MODELS.some((m) => m.key === saved.model) ? saved.model : DEFAULT_MODEL;
     this.language = saved.language ?? null; // null until the system's is read
     this.repo = undefined; // undefined: looking, null: not in git
@@ -93,6 +94,7 @@ export class Walkthrough {
     this.pr = null;
     this.prs = null; // null until listed
     this.prError = null;
+    this.prMissing = null; // the pull request another mod asked for, when it isn't open
     this.turn = null; // Last turn: the one shown (lib/turns.js), picked by hand when turnPinned
     this.turns = [];
     this.turnPinned = false;
@@ -179,7 +181,8 @@ export class Walkthrough {
       this.bases = bases;
       this.commits = commits;
       this.commit = commits[0] ?? null;
-      if (this.scope === "pr") await this.loadPullRequests();
+      if (this.scope === "commit" && this.want.commit) await this.openCommit();
+      if (this.scope === "pr") await this.loadPullRequests(); else this.want.pr = null;
       await startTurns(this, cx);
       await this.reload(cx);
       this.watch(cx);
@@ -207,7 +210,7 @@ export class Walkthrough {
   /** The source the toolbar describes, or null while one still has to be picked. */
   source() {
     if (this.scope === "branch") return this.base ? { kind: "branch", base: this.base, head: this.head ?? this.repo?.branch ?? "HEAD" } : null;
-    if (this.scope === "commit" && this.commit && this.since) return { kind: "range", from: this.since.hash, to: this.commit.hash, fromSubject: this.since.subject, toSubject: this.commit.subject, count: olderCommits(this.commits, this.commit).findIndex((c) => c.hash === this.since.hash) + 1 };
+    if (this.scope === "commit" && this.commit && this.since) return { kind: "range", from: this.since.hash, to: this.commit.hash, fromSubject: this.since.subject, toSubject: this.commit.subject, count: this.commit.far || this.since.far ? undefined : olderCommits(this.commits, this.commit).findIndex((c) => c.hash === this.since.hash) + 1 };
     if (this.scope === "commit") return this.commit ? { kind: "commit", hash: this.commit.hash, subject: this.commit.subject } : null;
     if (this.scope === "pr") return this.pr ? { kind: "pr", number: this.pr.number, title: this.pr.title, head: this.pr.head, base: this.pr.base } : null;
     if (this.scope === "turn") return this.turn ? turnSource(this.turn) : null;
@@ -352,6 +355,11 @@ export class Walkthrough {
           this.step = this.taskView && !this.view.steps.some((st) => isRead(st, this.read)) ? -1 : Math.max(0, first);
           this.openFiles = new Set();
           this.showTaskText = false;
+          if (this.view && this.want.path) {
+            const at = this.view.steps.findIndex((st) => st.found.some((f) => f.file.path === this.want.path));
+            if (at < 0) this.flash(`No step touches ${this.want.path}.`); else this.step = at;
+            this.want.path = null;
+          }
         }
         if (this.view) this.step = Math.max(this.firstPage(), Math.min(this.step, this.view.steps.length));
       }
@@ -579,6 +587,24 @@ export class Walkthrough {
     });
   }
 
+  /**
+   * The commit and "from" another mod asked for, looked up past the listed ones too
+   * (added after them, `far`: their position counts nothing). One git doesn't know is
+   * dropped with a note; a "from" that isn't an ancestor is refused by the read.
+   */
+  async openCommit() {
+    const look = async (hash) => {
+      const c = await commitAt(exec, this.repo.top, hash);
+      if (!c) { this.flash(`Couldn't find commit ${hash}.`); return null; }
+      if (!this.commits.some((x) => x.hash === c.hash)) this.commits.push({ ...c, far: true });
+      return this.commits.find((x) => x.hash === c.hash);
+    };
+    const commit = await look(this.want.commit);
+    if (commit) this.commit = commit;
+    if (commit && this.want.since) this.since = await look(this.want.since);
+    this.want.commit = this.want.since = null;
+  }
+
   /** The open pull requests; the one picked stays picked, else the current branch's is. */
   async loadPullRequests() {
     if (!this.repo) return;
@@ -589,6 +615,9 @@ export class Walkthrough {
       this.prs = [];
       this.prError = String(e?.message ?? e);
     }
+    const wanted = this.want.pr;
+    this.want.pr = this.prMissing = null;
+    if (wanted) { this.pr = this.prs.find((p) => p.number === wanted) ?? null; if (!this.pr) this.prMissing = wanted; return; }
     const kept = this.pr && this.prs.find((p) => p.number === this.pr.number);
     this.pr = kept ?? this.prs.find((p) => p.current) ?? null;
   }
@@ -856,7 +885,7 @@ export class Walkthrough {
 
   /** Closes the dialog and opens the same walkthrough as a pane beside it, or as its own tab. */
   reopen(where) {
-    const p = { folder: this.folder, scope: this.scope, tab: this.tab, from: this.from };
+    const p = { folder: this.folder, scope: this.scope, tab: this.tab, from: this.from, commit: this.commit?.hash, since: this.since?.hash, pr: this.pr?.number };
     if (where === "tab") run("tab.new", { name: "Walkthrough", space: this.space?.id, mod: "walkthrough", props: p });
     else run("pane.split", { direction: "right", mod: "walkthrough", props: p });
     closeOverlay(props().overlay);
@@ -993,7 +1022,7 @@ export class Walkthrough {
     if (this.scope === "pr" && this.prs === null) return center("Reading the pull requests…");
     if (this.scope === "pr" && !this.prs.length) return center("No open pull requests", "This repository has none open on GitHub.", { icon: "#", actions: [goTo("branch", "Branch"), goTo("uncommitted", "Uncommitted")] });
     if (this.scope === "turn" && !this.turns.length) return hookHelp(this, t);
-    if (!this.source()) return center(this.scope === "branch" ? "Pick the branch to compare with" : this.scope === "pr" ? "Pick a pull request" : "Pick a commit", "Nothing is read or generated until you do.", { icon: "◇" });
+    if (!this.source()) return center(this.scope === "branch" ? "Pick the branch to compare with" : this.scope === "pr" ? "Pick a pull request" : "Pick a commit", this.scope === "pr" && this.prMissing ? `#${this.prMissing} isn't among the open pull requests.` : "Nothing is read or generated until you do.", { icon: "◇" });
     if (!this.diff) return center("Reading the diff…");
     if (!this.diff.files.length) {
       if (this.scope === "turn") {

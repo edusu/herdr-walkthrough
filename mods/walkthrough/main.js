@@ -3,7 +3,8 @@
 // each step is shown under its explanation.
 //
 // Opened with `mod.open:walkthrough` as a dialog over the shown space, or as a
-// pane: `pane.split {direction: "right", mod: "walkthrough", props: {folder?, scope?}}`.
+// pane: `pane.split {direction: "right", mod: "walkthrough", props: {folder?, scope?, commit?, since?, pr?, path?}}`
+// (RECIPE.md, "Opening it from another mod").
 
 import { View } from "gpui-kit";
 import { Walkthrough as Panel } from "./view.js";
