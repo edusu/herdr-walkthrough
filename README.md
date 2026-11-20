@@ -101,7 +101,7 @@ says *where* a request shows up, never whether it's done well.
 - **Paid once.** Walkthroughs are cached by the exact diff, model and language. Undo a
   change and the earlier walkthrough is back, free.
 - **Runs in the background.** Close the dialog, or Herdr; it's waiting when you're back.
-- **Written while you wait.** With **Auto** on (the default), opening the walkthrough
+- **Written while you wait.** With **Auto** on (off by default), opening the walkthrough
   writes up the agent's last turn with Haiku if it has none yet. Open as a pane, it writes
   one each time an agent in its tab finishes, and tells you. Over 300 hunks it waits for
   Generate.
@@ -127,7 +127,7 @@ says *where* a request shows up, never whether it's done well.
 | Menu / command | What it does |
 | --- | --- |
 | **Matched against** menu | Found (default), Issue (only when one was found), Your own… (write it), or Off; kept per repository and tab |
-| Last turn → **⚡ Auto** | On (default): write the last turn's walkthrough without a click. One click turns it off: only on Generate |
+| Last turn → **⚡ Auto** | Off (default): only on Generate. One click turns it on: write the last turn's walkthrough without a click |
 | `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.wrap`, `.task`, `.ask` | Generate, cancel, move, Copy as Markdown, Unread only, wrap lines, write your own task and ask about the step |
 | `walkthrough.dialog`, `.pane`, `.tab` | Move it to a dialog, a pane beside the agent or a tab of its own |
 | `settings.lines` in `mod.json` | `"scroll"` (default) or `"wrap"`: how long lines start. [Better Config](https://github.com/munza/herdr-mods/tree/main/better-config) shows it |

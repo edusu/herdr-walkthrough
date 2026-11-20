@@ -273,8 +273,10 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
   program and the terminal.
 - **Last turn** reads `~/.herdr/walkthrough/turns/<repo>/` (`<repo>`: the first 16 digits of
   `printf %s <top> | git hash-object --stdin`), watched with `watchFolder`, newest turn
-  first; the turn shown is the newest of the terminal the dialog opened over, else the
-  newest, until one is picked by hand. A turn is `git diff <start tree> <end tree>` with
+  first; the turn shown first is the newest of the terminal the dialog opened over, else the
+  newest, and it stays shown while it is listed. A newer one brings a banner "There's a
+  newer turn." (its prompt's first line under it) with **Show**, unless the shown one was
+  picked by hand. A turn is `git diff <start tree> <end tree>` with
   `GIT_ALTERNATE_OBJECT_DIRECTORIES` set to the turn's `objects/` (and the next turn's, for
   an interrupted one), one section with scope `turn`; its source key is `turn:<id>` and
   its description quotes the prompt's first line. A running turn's end is a snapshot taken
@@ -345,7 +347,7 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
   request: step 5." Post to #12 leaves the task out unless it came from that pull
   request's description. The whole Markdown sits between `<!-- walkthrough -->` and
   `<!-- /walkthrough -->`.
-- **Auto** (`autoGenerate` in the prefs: `on-open`, the default, or `off`): on open, the
+- **Auto** (`autoGenerate` in the prefs: `on-open`, or `off`, the default): on open, the
   turn the tab shows, when finished and without a walkthrough by Haiku or by the picked
   model, is written with Haiku in the background (followed to its end even when another
   turn is picked meanwhile); in a pane (`props().overlay` unset), when an agent

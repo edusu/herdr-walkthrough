@@ -124,13 +124,20 @@ export const isOpen = (t) => t.state === "running" || t.state === "stale";
 export const autoWritable = (t) => Boolean(t) && !isOpen(t) && !t.frozen;
 
 /**
- * The turn to show after listing again: the one picked by hand while it is
- * still listed, else the one pickTurn picks (and it no longer counts as picked).
+ * The turn to show after listing again: the shown one while it is still listed
+ * (a newer one is offered, see newerTurn), else the one pickTurn picks (and it
+ * no longer counts as picked).
  * @returns {{ turn: any, pinned: boolean }}
  */
 export function keepTurn(turns, shown, pinned, terminal = null) {
-  const kept = pinned && shown ? turns.find((t) => t.id === shown.id) : null;
-  return kept ? { turn: kept, pinned: true } : { turn: pickTurn(turns, terminal), pinned: false };
+  const kept = shown ? turns.find((t) => t.id === shown.id) : null;
+  return kept ? { turn: kept, pinned } : { turn: pickTurn(turns, terminal), pinned: false };
+}
+
+/** The turn pickTurn would show instead of the shown one, unless that one was picked by hand. */
+export function newerTurn(turns, shown, pinned, terminal = null) {
+  const pick = pickTurn(turns, terminal);
+  return !pinned && pick && pick.id !== shown?.id ? pick : null;
 }
 
 /** The turn to show first: the newest of the terminal it was opened over, else the newest. */

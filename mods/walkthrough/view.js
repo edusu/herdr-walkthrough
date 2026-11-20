@@ -18,7 +18,7 @@ import { readKey, hunkRead, isRead, markStep, unmarkStep, mergeRead, changedSinc
 import { readDiff, readPreferences, matters, keyFor, findShown, preparePrompt, fits, promptChars, jobOf, startJob, alive, finished, cancelJob, finishJob, copyText, postComment, sendToNotion, notionSetup, settingsOf, claudeVersion, systemLocale, ensureDirs, loadRead, saveRead, transcriptMessages } from "./engine.js";
 import { button, chip, menu, picker, formatElapsed, formatTokens } from "./ui.js";
 import { TEXT, px, grow, setSizes } from "./lib/scale.js";
-import { turnSource, isOpen, firstLine } from "./lib/turns.js";
+import { turnSource, isOpen, firstLine, newerTurn } from "./lib/turns.js";
 import { PLACEMENTS, placementOf } from "./lib/placement.js";
 import { AUTO, DEFAULT_AUTO, autoOf, startTurns, loadTurns, turnLabel, turnItems, chooseTurn, turnTick, autoGenerate, announce, hookHelp } from "./turnview.js";
 
@@ -943,7 +943,7 @@ export class Walkthrough {
       .when(this.scope === "commit" && Boolean(this.commit), (el) => el.child(label("from")).child(picker(t, "pick-since", this.since ? `${this.since.short} ${this.since.subject}` : "its parent", open("since"))))
       .when(this.scope === "pr" && Boolean(this.prs?.length), (el) => el.child(picker(t, "pick-pr", this.pr ? `#${this.pr.number} ${this.pr.title}` : "Pick a pull request", open("pr"))))
       .when(this.scope === "turn" && this.turns.length > 0, (el) => el.child(label("Turn")).child(picker(t, "pick-turn", turnLabel(this), open("turn")))
-        .child(button(t, "toggle-auto", auto ? "⚡ Auto: on" : "Auto: off", (_e, cx) => { this.choose("auto", auto ? "off" : DEFAULT_AUTO, cx); }, {
+        .child(button(t, "toggle-auto", auto ? "⚡ Auto: on" : "Auto: off", (_e, cx) => { this.choose("auto", auto ? "off" : "on-open", cx); }, {
           kind: "ghost", small: true,
           tooltip: auto ? `${autoOf(this.auto).about}. Click to turn it off.` : "Only when you press Generate. Click to write the last turn's walkthrough without a click.",
         })));
@@ -1215,6 +1215,11 @@ export class Walkthrough {
         button(t, "b-cancel", "Cancel", (_e, cx) => cx.spawn(async (cx) => this.cancel(cx)), { small: true })));
     }
     if (this.genError) out.push(bar("b-error", t.ansi1, "!", this.genError, null));
+    const newer = this.scope === "turn" ? newerTurn(this.turns, this.turn, this.turnPinned, this.from) : null;
+    if (newer) {
+      out.push(bar("b-newer", t.accent, "↑", "There's a newer turn.",
+        button(t, "b-newer-go", "Show", (_e, cx) => this.choose("turn", newer, cx), { small: true }), firstLine(newer.prompt, 80)));
+    }
     const changed = this.changedSteps();
     if (changed.length) {
       const n = changed.length;

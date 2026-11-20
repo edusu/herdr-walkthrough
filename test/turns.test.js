@@ -6,7 +6,7 @@ import { spawnSync, execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync, realpathSync, readdirSync, existsSync, readFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseHook, parseMeta, parseListing, sortTurns, resolveEnds, pickTurn, keepTurn, lastFinished, autoWritable, firstLine, ago, turnSource, hookSettings, LISTING, RECORD, FILE, QUIET, UNKNOWN, HOOK_TIMEOUT, HOOK_WAIT } from "../mods/walkthrough/lib/turns.js";
+import { parseHook, parseMeta, parseListing, sortTurns, resolveEnds, pickTurn, keepTurn, newerTurn, lastFinished, autoWritable, firstLine, ago, turnSource, hookSettings, LISTING, RECORD, FILE, QUIET, UNKNOWN, HOOK_TIMEOUT, HOOK_WAIT } from "../mods/walkthrough/lib/turns.js";
 
 const SCRIPT = new URL("../mods/walkthrough/hooks/turn.sh", import.meta.url).pathname;
 const A = "a".repeat(40), B = "b".repeat(40), C = "c".repeat(40);
@@ -118,15 +118,19 @@ test("waits on a Stop hook cover its timeout, and no more than that by much", ()
   assert.ok(QUIET <= HOOK_WAIT);
 });
 
-test("a turn picked by hand stays shown while it is listed; once it is gone, the picked one is shown and nothing is pinned", () => {
+test("the shown turn stays shown while it is listed; once it is gone, the newest is shown and nothing is pinned", () => {
   const turns = [{ id: "3", terminal: "t1" }, { id: "2", terminal: "t2" }, { id: "1", terminal: "t1" }];
   assert.deepEqual(keepTurn(turns, { id: "1" }, true, "t2"), { turn: turns[2], pinned: true });
-  assert.deepEqual(keepTurn(turns, { id: "1" }, false, "t2"), { turn: turns[1], pinned: false });
+  assert.deepEqual(keepTurn(turns, { id: "1" }, false, "t2"), { turn: turns[2], pinned: false });
   const gone = keepTurn(turns, { id: "0" }, true, "t2");
   assert.deepEqual(gone, { turn: turns[1], pinned: false });
-  // And a newer turn of the terminal is followed again.
+  // A newer turn of the terminal is offered, not followed.
   const newer = [{ id: "4", terminal: "t2" }, ...turns];
-  assert.equal(keepTurn(newer, gone.turn, gone.pinned, "t2").turn.id, "4");
+  assert.equal(keepTurn(newer, gone.turn, gone.pinned, "t2").turn.id, "2");
+  assert.equal(newerTurn(newer, gone.turn, gone.pinned, "t2").id, "4");
+  assert.equal(newerTurn(turns, gone.turn, gone.pinned, "t2"), null);
+  // One picked by hand is where the person wants to be.
+  assert.equal(newerTurn(newer, turns[2], true, "t2"), null);
   assert.deepEqual(keepTurn([], { id: "1" }, true), { turn: null, pinned: false });
 });
 

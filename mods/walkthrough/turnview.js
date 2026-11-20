@@ -17,7 +17,7 @@ export const AUTO = [
   { key: "on-open", name: "While open", about: "When an agent's turn ends, and on opening, write its walkthrough with Haiku (300 hunks at most)" },
   { key: "off", name: "Off", about: "Only when you press Generate" },
 ];
-export const DEFAULT_AUTO = "on-open";
+export const DEFAULT_AUTO = "off";
 export const autoOf = (key) => AUTO.find((a) => a.key === key) ?? AUTO[0];
 
 /** The repository's turns folder is found and watched; the newest turn is picked. */
