@@ -385,16 +385,21 @@ with `recentCommits`' `git log -n1 … <hash>^{commit} --`, which fails for one 
 (`commitAt`); commit and `since` are looked up together, and one not among the 40 listed is
 added after them. A hash git doesn't know leaves the tab as it
 would have opened, with the note "Couldn't find commit <hash>."; a `since` that isn't an
-ancestor is refused by the range read. Moving to another Placement passes `commit`, `since`, `pr` and `step`
-on, so the copy shows the same commit, range or pull request, on the same page.
+ancestor is refused by the range read. Moving to another Placement passes `commit`, `since`, `pr`, `turn` and `step`
+on, so the copy shows the same commit, range, pull request or turn, on the same page.
+- `turn`: with `scope: "turn"`, a turn's folder name; shown while it is listed, counted as
+  picked by hand unless it is the one that would be shown anyway.
 - `step`: an index into the walkthrough's steps (-1 the task page, past the end "Not
-  covered"), used the first time one is shown; out of range, the nearest page.
+  covered"), used by the walkthrough the first read shows (none: dropped); out of range, the nearest page.
 
 Moving (`lib/placement.js`): the copy's Placement is `dialog` with `props().overlay`, else
 `tab` when its pane is outside the Origin tab (`tab`) or alone in its tab, else `pane`. The
 copy opens first — `tab.new` in the same space; `tab.select` of the Origin tab (when it still
-exists and this is a tab), then `pane.split` right or `openOverlay` — and this one closes
-(`closeOverlay`, `tab.close` or `pane.close`). Several walkthroughs may be open at once.
+exists and this is a tab), then `pane.split` right or `openOverlay` — and this one closes:
+`closeOverlay`; `tab.close` only when it is alone in a tab other than the Origin tab and the
+copy went there; else `pane.close`. A pane Herdr doesn't list doesn't move. Several
+walkthroughs may be open at once; `walkthrough.dialog`/`.pane`/`.tab` move a dialog, or a pane
+or tab that is the focused pane.
 
 Ways in (`OverlaySpec` takes another mod's name and props):
 `openOverlay({ mod: "walkthrough", kind: "dialog", modal: true, width: 0.74, height: 0.8, props })`,

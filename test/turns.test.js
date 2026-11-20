@@ -119,16 +119,18 @@ test("waits on a Stop hook cover its timeout, and no more than that by much", ()
 });
 
 test("the shown turn stays shown while it is listed; once it is gone, the newest is shown and nothing is pinned", () => {
-  const turns = [{ id: "3", terminal: "t1" }, { id: "2", terminal: "t2" }, { id: "1", terminal: "t1" }];
+  const turns = [{ id: "3", terminal: "t1", started: 3 }, { id: "2", terminal: "t2", started: 2 }, { id: "1", terminal: "t1", started: 1 }];
   assert.deepEqual(keepTurn(turns, { id: "1" }, true, "t2"), { turn: turns[2], pinned: true });
   assert.deepEqual(keepTurn(turns, { id: "1" }, false, "t2"), { turn: turns[2], pinned: false });
   const gone = keepTurn(turns, { id: "0" }, true, "t2");
   assert.deepEqual(gone, { turn: turns[1], pinned: false });
   // A newer turn of the terminal is offered, not followed.
-  const newer = [{ id: "4", terminal: "t2" }, ...turns];
+  const newer = [{ id: "4", terminal: "t2", started: 4 }, ...turns];
   assert.equal(keepTurn(newer, gone.turn, gone.pinned, "t2").turn.id, "2");
   assert.equal(newerTurn(newer, gone.turn, gone.pinned, "t2").id, "4");
   assert.equal(newerTurn(turns, gone.turn, gone.pinned, "t2"), null);
+  // Shown over t1, the newest turn of all: t1's first turn is the one pickTurn picks, but it is older.
+  assert.equal(newerTurn([{ id: "0", terminal: "t1", started: 0 }, ...turns], turns[1], false, "t1"), null);
   // One picked by hand is where the person wants to be.
   assert.equal(newerTurn(newer, turns[2], true, "t2"), null);
   assert.deepEqual(keepTurn([], { id: "1" }, true), { turn: null, pinned: false });

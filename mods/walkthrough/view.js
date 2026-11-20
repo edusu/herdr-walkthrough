@@ -101,6 +101,7 @@ export class Walkthrough {
     this.turn = null; // Last turn: the one shown (lib/turns.js), picked by hand when turnPinned
     this.turns = [];
     this.turnPinned = false;
+    if (this.want.turn) this.turn = { id: this.want.turn }; // kept by loadTurns while it is listed
     this.summaryOpen = false; // the sidebar's summary, shown whole
     this.sidebar = saved.sidebar !== false; // the contents column, until collapsed
     this.auto = AUTO.some((a) => a.key === saved.autoGenerate) ? saved.autoGenerate : DEFAULT_AUTO;
@@ -186,7 +187,10 @@ export class Walkthrough {
       if (this.scope === "commit" && this.want.commit) await this.openCommit();
       if (this.scope === "pr") await this.loadPullRequests(); else this.want.pr = null;
       await startTurns(this, cx);
+      if (this.want.turn && this.turn?.id === this.want.turn) chooseTurn(this, this.turn);
+      this.want.turn = null;
       await this.reload(cx);
+      this.want.step = null; // for the walkthrough this first read shows, not a later one
       this.watch(cx);
       await autoGenerate(this, cx, this.turn); // the turn the tab shows: this terminal's newest, else the newest
     });
@@ -204,7 +208,8 @@ export class Walkthrough {
         else if (name === "wrap") this.wrap = !this.wrap;
         else if (name === "task") this.chooseTask("own", cx);
         else if (name === "ask") this.openAsk();
-        else if (PLACEMENTS.some((pl) => pl.key === name)) this.moveTo(name);
+        // Every copy hears a command: a pane or a tab moves only when it is the focused pane.
+        else if (PLACEMENTS.some((pl) => pl.key === name) && (this.inDialog || panes().find((x) => x.pane === this.own.pane)?.focused)) this.moveTo(name);
         cx.notify();
       }
     });
@@ -843,7 +848,7 @@ export class Walkthrough {
       else if (this.target) this.target = null;
       else if (this.asking) this.closeAsk();
       else if (this.confirm && !this.posting) this.confirm = null;
-      else if (props()?.overlay) closeOverlay(props().overlay);
+      else if (this.inDialog) closeOverlay(this.own.overlay);
     } else if (this.view && (k === "right" || k === "j" || k === "n")) this.move(1);
     else if (this.view && (k === "left" || k === "k" || k === "p")) this.move(-1);
     else if (this.view && k === "x") this.toggleRead();
@@ -859,7 +864,7 @@ export class Walkthrough {
 
   render() {
     const t = theme();
-    const inDialog = Boolean(props()?.overlay);
+    const inDialog = this.inDialog;
     return v_flex().id("walkthrough").track_focus(this.handle).on_key_down((e, cx) => this.onKey(e, cx))
       .on_size_change((size, cx) => { if (Math.abs((this.width ?? 0) - size.width) > 1) { this.width = size.width; cx.notify(); } })
       .size_full().bg(inDialog ? t.popover : t.background).text_color(t.foreground).text_size(TEXT.base)
@@ -899,20 +904,24 @@ export class Walkthrough {
 
   /** Moves the walkthrough to another Placement: a copy opens there on the same step, then this one closes. */
   moveTo(where) {
-    const mine = panes().find((x) => x.pane === this.own.pane);
-    const here = placementOf(this.own, panes(), this.tab);
-    if (where === here) return;
-    const p = { folder: this.folder, scope: this.scope, tab: this.tab, from: this.from, commit: this.commit?.hash, since: this.since?.hash, pr: this.pr?.number, ...(this.view ? { step: this.step } : {}) };
+    const all = panes(), mine = all.find((x) => x.pane === this.own.pane);
+    const here = placementOf(this.own, all, this.tab);
+    // Without its own pane it couldn't close itself: two would stay open.
+    if (where === here || (here !== "dialog" && !mine)) return;
+    const p = { folder: this.folder, scope: this.scope, tab: this.tab, from: this.from, commit: this.commit?.hash, since: this.since?.hash, pr: this.pr?.number,
+      ...(this.scope === "turn" && this.turn ? { turn: this.turn.id } : {}), ...(this.view ? { step: this.step } : {}) };
+    const origin = spaces().some((s) => s.tabs.some((x) => x.id === this.tab)) && this.tab !== mine?.tab ? this.tab : null;
     if (where === "tab") run("tab.new", { name: "Walkthrough", space: this.space?.id, mod: "walkthrough", props: p });
     else {
       // A pane and a dialog belong over the Origin tab; when it's gone, over the one shown.
-      if (here === "tab" && spaces().some((s) => s.tabs.some((x) => x.id === this.tab))) run("tab.select", { id: this.tab });
+      if (here === "tab" && origin) run("tab.select", { id: origin });
       if (where === "pane") run("pane.split", { direction: "right", mod: "walkthrough", props: p });
       else openOverlay({ mod: "walkthrough", kind: "dialog", modal: true, width: 0.74, height: 0.8, props: p });
     }
+    // The whole tab only when this is all it holds and the copy went elsewhere: other panes there may be agents.
     if (here === "dialog") closeOverlay(this.own.overlay);
-    else if (here === "tab" && mine) run("tab.close", { id: mine.tab });
-    else run("pane.close", { pane: this.own.pane });
+    else if (where !== "tab" && origin && all.filter((x) => x.tab === mine.tab).length === 1) run("tab.close", { id: mine.tab });
+    else run("pane.close", { pane: mine.pane });
   }
 
   toolbar(t) {

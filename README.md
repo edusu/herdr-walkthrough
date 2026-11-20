@@ -161,6 +161,7 @@ as it would have.
 | `pr` | With `scope: "pr"`, the pull request's number. One that isn't open says so instead of picking another |
 | `path` | A path inside the repository, as git prints it: the walkthrough opens on the first step touching that file, once |
 | `step` | The page to open the first walkthrough shown on: a step's index from 0, -1 for the task page |
+| `turn` | With `scope: "turn"`, the turn shown (its folder's name), while it is recorded |
 
 Three ways in, all with the same props:
 

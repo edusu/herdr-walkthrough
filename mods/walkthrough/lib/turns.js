@@ -134,10 +134,10 @@ export function keepTurn(turns, shown, pinned, terminal = null) {
   return kept ? { turn: kept, pinned } : { turn: pickTurn(turns, terminal), pinned: false };
 }
 
-/** The turn pickTurn would show instead of the shown one, unless that one was picked by hand. */
+/** The turn pickTurn would show instead of the shown one, when it started later and the shown one wasn't picked by hand. */
 export function newerTurn(turns, shown, pinned, terminal = null) {
   const pick = pickTurn(turns, terminal);
-  return !pinned && pick && pick.id !== shown?.id ? pick : null;
+  return !pinned && pick && pick.id !== shown?.id && !(pick.started <= shown?.started) ? pick : null;
 }
 
 /** The turn to show first: the newest of the terminal it was opened over, else the newest. */

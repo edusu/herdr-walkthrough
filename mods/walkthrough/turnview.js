@@ -18,7 +18,7 @@ export const AUTO = [
   { key: "off", name: "Off", about: "Only when you press Generate" },
 ];
 export const DEFAULT_AUTO = "off";
-export const autoOf = (key) => AUTO.find((a) => a.key === key) ?? AUTO[0];
+export const autoOf = (key) => AUTO.find((a) => a.key === key) ?? AUTO.find((a) => a.key === DEFAULT_AUTO);
 
 /** The repository's turns folder is found and watched; the newest turn is picked. */
 export async function startTurns(v, cx) {

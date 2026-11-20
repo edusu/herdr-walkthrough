@@ -147,13 +147,13 @@ test('the "from" picker offers the commits older than the picked one', () => {
 });
 
 test("another mod's props: what can't be trusted is dropped", () => {
-  assert.deepEqual(openRequest({ folder: "/r", scope: "commit", commit: "ABCDEF1", since: "0123456789abcdef0123456789abcdef01234567", pr: 12, path: "src/a b.js", step: 3 }),
-    { scope: "commit", commit: "ABCDEF1", since: "0123456789abcdef0123456789abcdef01234567", pr: 12, path: "src/a b.js", step: 3 });
+  assert.deepEqual(openRequest({ folder: "/r", scope: "commit", commit: "ABCDEF1", since: "0123456789abcdef0123456789abcdef01234567", pr: 12, path: "src/a b.js", step: 3, turn: "1732100000-a1b2" }),
+    { scope: "commit", commit: "ABCDEF1", since: "0123456789abcdef0123456789abcdef01234567", pr: 12, path: "src/a b.js", step: 3, turn: "1732100000-a1b2" });
   // -1 is the task page.
   assert.equal(openRequest({ step: -1 }).step, -1);
-  const none = { scope: null, commit: null, since: null, pr: null, path: null, step: null };
+  const none = { scope: null, commit: null, since: null, pr: null, path: null, step: null, turn: null };
   assert.deepEqual(openRequest(undefined), none);
-  assert.deepEqual(openRequest({ scope: "all", commit: "--output=/tmp/x", since: "abc12", pr: -3, path: "/etc/passwd", step: -2 }), none);
+  assert.deepEqual(openRequest({ scope: "all", commit: "--output=/tmp/x", since: "abc12", pr: -3, path: "/etc/passwd", step: -2, turn: "../x" }), none);
   assert.deepEqual(openRequest({ commit: "HEAD~1", since: "abcdefg", pr: "12", path: "a/../../b", step: "1" }), none);
   assert.deepEqual(openRequest({ commit: "a".repeat(65), pr: 1.5, path: "", step: 0.5 }), none);
 });
