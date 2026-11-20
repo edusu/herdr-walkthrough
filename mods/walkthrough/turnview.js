@@ -193,7 +193,7 @@ export function hookHelp(v, t) {
           v_flex().w_full().min_w(0).p(10).rounded(8).border_1().border_color(t.border).bg(t.raised).font_family(font).text_size(TEXT.small)
             .children(snippet.split("\n").map((line) => {
               const indent = /^ */.exec(line)[0].length;
-              return div().w_full().min_w(0).pl(indent * 7).child(line.trimStart() || " ");
+              return div().w_full().min_w(0).pl(grow(indent * 7)).child(line.trimStart() || " ");
             })),
           h_flex().gap(10).items_center()
             .child(button(t, "copy-hooks", "Copy settings", (_e, cx) => cx.spawn(async (cx) => {

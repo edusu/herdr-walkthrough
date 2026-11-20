@@ -34,7 +34,7 @@ const ROW = 30, ROW_WITH_HINT = 44, MENU_MAX = 360;
  * view; its rows take no handlers, so a click comes through `on_item_click`.
  */
 export function menu(t, id, items, onPick, { width = 280, active = -1, scroll = null } = {}) {
-  const frame = v_flex().id(`${id}-frame`).w(width).p(4).rounded(8).border_1().border_color(t.border).bg(t.popover).shadow_lg()
+  const frame = v_flex().id(`${id}-frame`).w(grow(width)).p(4).rounded(8).border_1().border_color(t.border).bg(t.popover).shadow_lg()
     .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
     // The list scrolls first; the wheel stops here instead of also scrolling the page under the menu.
     .on_scroll_wheel((_e, cx) => cx.stop_propagation());
@@ -58,7 +58,7 @@ export function menu(t, id, items, onPick, { width = 280, active = -1, scroll = 
 
 /** A dropdown's face: its label and a caret. */
 export function picker(t, id, label, onClick, { disabled = false, tooltip = null, kind = "outline" } = {}) {
-  return button(t, id, h_flex().gap(5).items_center().child(div().max_w(220).truncate().child(label)).child(div().text_color(t.dim).text_size(TEXT.caret).child("▼")), onClick, { small: true, disabled, tooltip, kind });
+  return button(t, id, h_flex().gap(5).items_center().child(div().max_w(grow(220)).truncate().child(label)).child(div().text_color(t.dim).text_size(TEXT.caret).child("▼")), onClick, { small: true, disabled, tooltip, kind });
 }
 
 export const formatElapsed = (ms) => {

@@ -973,7 +973,8 @@ export class Walkthrough {
 
   /** Whether the pane has room for the contents column beside the page. */
   wide() {
-    return (this.width ?? 1000) >= 720;
+    // The contents column grows with the text; the page keeps its 472px beside it.
+    return (this.width ?? 1000) >= grow(248) + 472;
   }
 
   canGenerate() {

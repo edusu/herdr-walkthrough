@@ -23,7 +23,7 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
    14px, wrapping when narrow): what to read and the one action. Below (at least 36px,
    padding 5px 14px): on the left which one of it, on the right how it is written.
    - below, first on the left while a walkthrough is shown and the pane is at least 720px
-     wide: a small ghost "«" button that hides the contents column ("»" shows it again);
+     wide (the contents column's width + 472, so more with a larger `font_size` or `scale`): a small ghost "«" button that hides the contents column ("»" shows it again);
      the choice is kept in the `walkthrough.prefs` shared value as `sidebar`.
    - scope tabs in a `raised` pill (radius 7, padding 2): Uncommitted, Staged, Unstaged,
      Branch, Commit, Pull request, Last turn; 22px tall, 12px; the chosen one on `popover`, semibold, the rest
