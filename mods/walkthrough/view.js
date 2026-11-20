@@ -81,7 +81,9 @@ export class Walkthrough {
     this.remote = Boolean(here.space?.machine);
     this.from = p.from ?? here.terminal; // the terminal it was opened over: comments go to its agent first
     this.inDialog = Boolean(p.overlay);
-    this.own = { overlay: p.overlay ?? null, pane: p.pane ?? null }; // props() can be another copy's in a callback
+    // props() can be another copy's in a callback. A mod pane gets no props().pane: it is the walkthrough pane focused as it opens (tab.new and pane.split focus it).
+    const opened = !p.overlay ? panes().find((x) => x.pane === (p.pane ?? focused()?.pane) && x.mod === "walkthrough") : null;
+    this.own = { overlay: p.overlay ?? null, pane: opened?.pane ?? null };
     // A copy opened as its own tab gets the tab it came from: that tab has the agents to watch.
     this.tab = p.tab || (p.pane && panes().find((x) => x.pane === p.pane)?.tab) || focused()?.tab || null; // a pane watches this tab's agents
     const saved = prefs();
@@ -209,7 +211,7 @@ export class Walkthrough {
         else if (name === "task") this.chooseTask("own", cx);
         else if (name === "ask") this.openAsk();
         // Every copy hears a command: a pane or a tab moves only when it is the focused pane.
-        else if (PLACEMENTS.some((pl) => pl.key === name) && (this.inDialog || panes().find((x) => x.pane === this.own.pane)?.focused)) this.moveTo(name);
+        else if (PLACEMENTS.some((pl) => pl.key === name) && (this.inDialog || this.ownPane()?.focused)) this.moveTo(name);
         cx.notify();
       }
     });
@@ -893,19 +895,31 @@ export class Walkthrough {
         .child(button(t, "close", "Esc", () => closeOverlay(this.own.overlay), { kind: "ghost", small: true })));
   }
 
+  /**
+   * This copy's pane, null in a dialog. Known from init, else the only walkthrough pane; `clicked`: the focused one,
+   * since a click on this copy focuses its pane.
+   */
+  ownPane(clicked = false) {
+    if (this.inDialog) return null;
+    const mods = panes().filter((x) => x.mod === "walkthrough");
+    const mine = mods.find((x) => x.pane === this.own.pane) ?? (clicked ? mods.find((x) => x.focused) : null) ?? (mods.length === 1 ? mods[0] : null);
+    if (mine) this.own.pane = mine.pane;
+    return mine ?? null;
+  }
+
   placementSwitch(t) {
-    const here = placementOf(this.own, panes(), this.tab);
+    const here = placementOf({ overlay: this.own.overlay, pane: this.ownPane()?.pane }, panes(), this.tab);
     return h_flex().flex_none().p(2).gap(2).rounded(7).bg(t.raised).children(PLACEMENTS.map((pl) =>
       div().id(`as-${pl.key}`).px(8).h(grow(20)).flex().items_center().rounded(5).text_size(TEXT.body).tooltip(pl.about)
         .when(pl.key === here, (e) => e.bg(t.popover).text_color(t.foreground).font_semibold())
-        .when(pl.key !== here, (e) => e.cursor_pointer().text_color(t.muted).hover((st) => st.text_color(t.foreground)).on_click(() => this.moveTo(pl.key)))
+        .when(pl.key !== here, (e) => e.cursor_pointer().text_color(t.muted).hover((st) => st.text_color(t.foreground)).on_click(() => this.moveTo(pl.key, true)))
         .child(pl.label)));
   }
 
   /** Moves the walkthrough to another Placement: a copy opens there on the same step, then this one closes. */
-  moveTo(where) {
-    const all = panes(), mine = all.find((x) => x.pane === this.own.pane);
-    const here = placementOf(this.own, all, this.tab);
+  moveTo(where, clicked = false) {
+    const all = panes(), mine = this.ownPane(clicked);
+    const here = placementOf({ overlay: this.own.overlay, pane: mine?.pane }, all, this.tab);
     // Without its own pane it couldn't close itself: two would stay open.
     if (where === here || (here !== "dialog" && !mine)) return;
     const p = { folder: this.folder, scope: this.scope, tab: this.tab, from: this.from, commit: this.commit?.hash, since: this.since?.hash, pr: this.pr?.number,
