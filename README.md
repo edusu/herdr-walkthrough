@@ -129,6 +129,7 @@ says *where* a request shows up, never whether it's done well.
 | **Matched against** menu | Found (default), Issue (only when one was found), Your own… (write it), or Off; kept per repository and tab |
 | Last turn → **⚡ Auto** | On (default): write the last turn's walkthrough without a click. One click turns it off: only on Generate |
 | `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.wrap`, `.task`, `.ask` | Generate, cancel, move, Copy as Markdown, Unread only, wrap lines, write your own task and ask about the step |
+| `walkthrough.dialog`, `.pane`, `.tab` | Move it to a dialog, a pane beside the agent or a tab of its own |
 | `settings.lines` in `mod.json` | `"scroll"` (default) or `"wrap"`: how long lines start. [Better Config](https://github.com/munza/herdr-mods/tree/main/better-config) shows it |
 | `settings.font_size` in `mod.json` | The main text's size in px, 9 to 24 (default 13); the rest of the text keeps its proportion to it |
 | `settings.scale` in `mod.json` | 0.8 to 1.6 (default 1): icons, buttons and row heights. Rows holding text also grow with `font_size` |
@@ -136,9 +137,10 @@ says *where* a request shows up, never whether it's done well.
 
 </details>
 
-To keep it beside an agent instead of over it, click **Open as pane** (or **Open as tab**) in
-the dialog's header. The copy keeps the folder, the scope, the commit, range or pull request, and the tab and
-agent it was opened over, so it still watches that tab's agents. From the command line:
+**Dialog | Pane | Tab** in the header moves it at any time: over the agent, beside it, or to a
+tab of its own, and back. It keeps the folder, the scope, the commit, range or pull request, the
+step you're on, and the tab and agent it was opened over, so it still watches that tab's agents.
+From the command line:
 
 ```sh
 herdr-app do pane.split --direction right --mod walkthrough --props '{"scope":"branch"}'
@@ -158,6 +160,7 @@ as it would have.
 | `since` | With `commit`, its **from**: everything after it up to `commit`. It must be an ancestor of `commit` |
 | `pr` | With `scope: "pr"`, the pull request's number. One that isn't open says so instead of picking another |
 | `path` | A path inside the repository, as git prints it: the walkthrough opens on the first step touching that file, once |
+| `step` | The page to open the first walkthrough shown on: a step's index from 0, -1 for the task page |
 
 Three ways in, all with the same props:
 

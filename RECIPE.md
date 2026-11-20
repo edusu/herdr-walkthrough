@@ -15,7 +15,10 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
 
 1. **Header**, 40px, bottom border `border`: a 12px `◆` in `accent`, "Walkthrough" 13.5px
    semibold, then the repository name and `⎇ branch` (or "(detached)") in `dim` 12px; at
-   the right, in a dialog, a ghost "Esc" button.
+   the right the Placement switch, a `raised` pill like the scope tabs (20px tall): Dialog,
+   Pane, Tab, the current one on `popover`, semibold and inert, each with a tooltip ("Float over
+   the agent", "Keep it beside the agent", "Give it a tab of its own"); then, in a dialog, a
+   ghost "Esc" button. A pane or a tab closes the way Herdr's do.
 2. **Toolbar**, two rows, each with a bottom border. Above (at least 42px, padding 7px
    14px, wrapping when narrow): what to read and the one action. Below (at least 36px,
    padding 5px 14px): on the left which one of it, on the right how it is written.
@@ -356,7 +359,7 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
   `shared("walkthrough.prefs")`. The first language is the system's (`defaults read -g
   AppleLanguages`, else `$LANG`).
 - Keys from `keys.json`: `cmd-shift-e` → `mod.open:walkthrough`. Mod commands:
-  `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.task` (opens the task editor), `.ask` (opens the question box). In the view, `x`
+  `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.task` (opens the task editor), `.ask` (opens the question box), `.dialog`, `.pane`, `.tab` (move it there). In the view, `x`
   marks the step read or unread, `u` toggles Unread only, `t` opens the task page and `a` the question box.
 
 ## Opening it from another mod
@@ -380,8 +383,16 @@ with `recentCommits`' `git log -n1 … <hash>^{commit} --`, which fails for one 
 (`commitAt`); commit and `since` are looked up together, and one not among the 40 listed is
 added after them. A hash git doesn't know leaves the tab as it
 would have opened, with the note "Couldn't find commit <hash>."; a `since` that isn't an
-ancestor is refused by the range read. "Open as pane / tab" passes `commit`, `since` and `pr`
-on, so the copy shows the same commit, range or pull request.
+ancestor is refused by the range read. Moving to another Placement passes `commit`, `since`, `pr` and `step`
+on, so the copy shows the same commit, range or pull request, on the same page.
+- `step`: an index into the walkthrough's steps (-1 the task page, past the end "Not
+  covered"), used the first time one is shown; out of range, the nearest page.
+
+Moving (`lib/placement.js`): the copy's Placement is `dialog` with `props().overlay`, else
+`tab` when its pane is outside the Origin tab (`tab`) or alone in its tab, else `pane`. The
+copy opens first — `tab.new` in the same space; `tab.select` of the Origin tab (when it still
+exists and this is a tab), then `pane.split` right or `openOverlay` — and this one closes
+(`closeOverlay`, `tab.close` or `pane.close`). Several walkthroughs may be open at once.
 
 Ways in (`OverlaySpec` takes another mod's name and props):
 `openOverlay({ mod: "walkthrough", kind: "dialog", modal: true, width: 0.74, height: 0.8, props })`,

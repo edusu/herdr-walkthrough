@@ -3,7 +3,7 @@
 
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, VirtualListScrollHandle } from "gpui-base";
-import { spaces, panes, focused, agents, theme, props, closeOverlay, hc, exec, nextCommand, settings, shared, setShared, watchFolder, run } from "herdr";
+import { spaces, panes, focused, agents, theme, props, openOverlay, closeOverlay, hc, exec, nextCommand, settings, shared, setShared, watchFolder, run } from "herdr";
 import { SCOPES, repoAt, currentHead, defaultBase, baseChoices, recentCommits, olderCommits, commitAt, openRequest, pullRequests, issuesFor, sourceKey, commitMessage, rangeMessages, taskSince } from "./lib/sources.js";
 import { overlay, fileTotals, overlayAsks, asksOf } from "./lib/walkthrough.js";
 import { TASK_MODES, taskChoice, resolveTask, taskKey, taskCacheKey, clip, MAX_TASK_CHARS } from "./lib/task.js";
@@ -19,6 +19,7 @@ import { readDiff, readPreferences, matters, keyFor, findShown, preparePrompt, f
 import { button, chip, menu, picker, formatElapsed, formatTokens } from "./ui.js";
 import { TEXT, px, grow, setSizes } from "./lib/scale.js";
 import { turnSource, isOpen, firstLine } from "./lib/turns.js";
+import { PLACEMENTS, placementOf } from "./lib/placement.js";
 import { AUTO, DEFAULT_AUTO, autoOf, startTurns, loadTurns, turnLabel, turnItems, chooseTurn, turnTick, autoGenerate, announce, hookHelp } from "./turnview.js";
 
 const PREFS = "walkthrough.prefs";
@@ -80,6 +81,7 @@ export class Walkthrough {
     this.remote = Boolean(here.space?.machine);
     this.from = p.from ?? here.terminal; // the terminal it was opened over: comments go to its agent first
     this.inDialog = Boolean(p.overlay);
+    this.own = { overlay: p.overlay ?? null, pane: p.pane ?? null }; // props() can be another copy's in a callback
     // A copy opened as its own tab gets the tab it came from: that tab has the agents to watch.
     this.tab = p.tab || (p.pane && panes().find((x) => x.pane === p.pane)?.tab) || focused()?.tab || null; // a pane watches this tab's agents
     const saved = prefs();
@@ -189,7 +191,7 @@ export class Walkthrough {
       await autoGenerate(this, cx, this.turn); // the turn the tab shows: this terminal's newest, else the newest
     });
     cx.timer.every(1000, (cx) => this.tick(cx));
-    // Commands for keys.json: walkthrough.generate, .cancel, .next, .prev, .copy, .unread, .wrap, .task (write your own), .ask.
+    // Commands for keys.json: walkthrough.generate, .cancel, .next, .prev, .copy, .unread, .wrap, .task (write your own), .ask, .dialog, .pane, .tab.
     cx.spawn(async (cx) => {
       for (;;) {
         const name = String(await nextCommand()).replace(/^walkthrough\./, "").split(":")[0];
@@ -202,6 +204,7 @@ export class Walkthrough {
         else if (name === "wrap") this.wrap = !this.wrap;
         else if (name === "task") this.chooseTask("own", cx);
         else if (name === "ask") this.openAsk();
+        else if (PLACEMENTS.some((pl) => pl.key === name)) this.moveTo(name);
         cx.notify();
       }
     });
@@ -360,6 +363,7 @@ export class Walkthrough {
             if (at < 0) this.flash(`No step touches ${this.want.path}.`); else this.step = at;
             this.want.path = null;
           }
+          if (this.view && this.want.step !== null) { this.step = this.want.step; this.want.step = null; }
         }
         if (this.view) this.step = Math.max(this.firstPage(), Math.min(this.step, this.view.steps.length));
       }
@@ -879,18 +883,36 @@ export class Walkthrough {
       .child(div().font_semibold().text_size(TEXT.strong).child("Walkthrough"))
       .child(div().flex_1().min_w(0).truncate().text_size(TEXT.body).text_color(t.dim)
         .child(r ? `${r.name}${r.branch ? `   ⎇ ${r.branch}` : "   (detached)"}` : this.folder ?? ""))
+      .child(this.placementSwitch(t))
       .when(inDialog, (el) => el
-        .child(button(t, "as-pane", "Open as pane", () => this.reopen("pane"), { kind: "ghost", small: true, tooltip: "Keep it beside the agent" }))
-        .child(button(t, "as-tab", "Open as tab", () => this.reopen("tab"), { kind: "ghost", small: true, tooltip: "Give it a tab of its own" }))
-        .child(button(t, "close", "Esc", () => closeOverlay(props().overlay), { kind: "ghost", small: true })));
+        .child(button(t, "close", "Esc", () => closeOverlay(this.own.overlay), { kind: "ghost", small: true })));
   }
 
-  /** Closes the dialog and opens the same walkthrough as a pane beside it, or as its own tab. */
-  reopen(where) {
-    const p = { folder: this.folder, scope: this.scope, tab: this.tab, from: this.from, commit: this.commit?.hash, since: this.since?.hash, pr: this.pr?.number };
+  placementSwitch(t) {
+    const here = placementOf(this.own, panes(), this.tab);
+    return h_flex().flex_none().p(2).gap(2).rounded(7).bg(t.raised).children(PLACEMENTS.map((pl) =>
+      div().id(`as-${pl.key}`).px(8).h(grow(20)).flex().items_center().rounded(5).text_size(TEXT.body).tooltip(pl.about)
+        .when(pl.key === here, (e) => e.bg(t.popover).text_color(t.foreground).font_semibold())
+        .when(pl.key !== here, (e) => e.cursor_pointer().text_color(t.muted).hover((st) => st.text_color(t.foreground)).on_click(() => this.moveTo(pl.key)))
+        .child(pl.label)));
+  }
+
+  /** Moves the walkthrough to another Placement: a copy opens there on the same step, then this one closes. */
+  moveTo(where) {
+    const mine = panes().find((x) => x.pane === this.own.pane);
+    const here = placementOf(this.own, panes(), this.tab);
+    if (where === here) return;
+    const p = { folder: this.folder, scope: this.scope, tab: this.tab, from: this.from, commit: this.commit?.hash, since: this.since?.hash, pr: this.pr?.number, ...(this.view ? { step: this.step } : {}) };
     if (where === "tab") run("tab.new", { name: "Walkthrough", space: this.space?.id, mod: "walkthrough", props: p });
-    else run("pane.split", { direction: "right", mod: "walkthrough", props: p });
-    closeOverlay(props().overlay);
+    else {
+      // A pane and a dialog belong over the Origin tab; when it's gone, over the one shown.
+      if (here === "tab" && spaces().some((s) => s.tabs.some((x) => x.id === this.tab))) run("tab.select", { id: this.tab });
+      if (where === "pane") run("pane.split", { direction: "right", mod: "walkthrough", props: p });
+      else openOverlay({ mod: "walkthrough", kind: "dialog", modal: true, width: 0.74, height: 0.8, props: p });
+    }
+    if (here === "dialog") closeOverlay(this.own.overlay);
+    else if (here === "tab" && mine) run("tab.close", { id: mine.tab });
+    else run("pane.close", { pane: this.own.pane });
   }
 
   toolbar(t) {

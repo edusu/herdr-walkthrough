@@ -361,7 +361,7 @@ export function openRequest(props) {
   const p = props ?? {};
   const hash = (h) => (typeof h === "string" && /^[0-9a-f]{7,64}$/i.test(h) ? h : null);
   const path = typeof p.path === "string" && p.path && !p.path.startsWith("/") && !p.path.split("/").includes("..") ? p.path : null;
-  return { scope: SCOPES.some((s) => s.key === p.scope) ? p.scope : null, commit: hash(p.commit), since: hash(p.since), pr: Number.isInteger(p.pr) && p.pr > 0 ? p.pr : null, path };
+  return { scope: SCOPES.some((s) => s.key === p.scope) ? p.scope : null, commit: hash(p.commit), since: hash(p.since), pr: Number.isInteger(p.pr) && p.pr > 0 ? p.pr : null, path, step: Number.isInteger(p.step) && p.step >= -1 ? p.step : null };
 }
 
 /** The commits listed after the picked one: older on HEAD, so a range can start at any of them. */
