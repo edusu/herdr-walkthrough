@@ -2,7 +2,7 @@
 // time, with the code each step talks about under it.
 
 import { div } from "gpui-kit";
-import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, VirtualListScrollHandle } from "gpui-base";
+import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, TextView, VirtualListScrollHandle } from "gpui-base";
 import { spaces, panes, focused, agents, theme, props, openOverlay, closeOverlay, hc, exec, nextCommand, settings, shared, setShared, watchFolder, run } from "herdr";
 import { SCOPES, repoAt, currentHead, defaultBase, baseChoices, recentCommits, olderCommits, commitAt, openRequest, pullRequests, issuesFor, sourceKey, commitMessage, rangeMessages, taskSince } from "./lib/sources.js";
 import { overlay, fileTotals, overlayAsks, asksOf } from "./lib/walkthrough.js";
@@ -14,8 +14,10 @@ import { MODELS, DEFAULT_MODEL, modelOf } from "./lib/job.js";
 import { estimateTokens, codeKey, placeKey, MAX_PROMPT_CHARS } from "./lib/cache.js";
 import { formatComments, formatQuestion, addComment, sameSpot } from "./lib/comments.js";
 import { toMarkdown } from "./lib/export.js";
+import { linkify, whereIs } from "./lib/links.js";
+import { FOLLOW_UPS, followUpsOf } from "./lib/followup.js";
 import { readKey, hunkRead, isRead, markStep, unmarkStep, mergeRead, changedSince } from "./lib/read.js";
-import { readDiff, readPreferences, matters, keyFor, findShown, preparePrompt, fits, promptChars, jobOf, startJob, alive, finished, cancelJob, finishJob, copyText, postComment, sendToNotion, notionSetup, settingsOf, claudeVersion, systemLocale, ensureDirs, loadRead, saveRead, transcriptMessages } from "./engine.js";
+import { readDiff, readPreferences, matters, keyFor, findShown, preparePrompt, fits, promptChars, jobOf, startJob, alive, finished, cancelJob, finishJob, copyText, postComment, sendToNotion, notionSetup, settingsOf, askFollowUp, claudeVersion, systemLocale, ensureDirs, loadRead, saveRead, transcriptMessages } from "./engine.js";
 import { button, chip, menu, picker, formatElapsed, formatTokens } from "./ui.js";
 import { TEXT, px, grow, setSizes } from "./lib/scale.js";
 import { turnSource, isOpen, firstLine, newerTurn } from "./lib/turns.js";
@@ -64,6 +66,7 @@ const prefs = () => /** @type {any} */ (shared(PREFS)) ?? {};
 const savePrefs = (change) => setShared(PREFS, { ...prefs(), ...change });
 // Task choices are kept per repository and source; past this many the oldest go.
 const MAX_TASK_CHOICES = 100;
+const FOLLOW_KEY = { d: "deeper", m: "technical" };
 const COVERAGE_MARK = { seen: "✓", partly: "◐", absent: "○" };
 const COVERAGE_ABOUT = {
   seen: "The diff carries this request out",
@@ -158,6 +161,7 @@ export class Walkthrough {
     this.input.on("focus", (_e, cx) => { this.typing = "comment"; cx.notify(); });
     this.input.on("blur", (_e, cx) => { this.typing = false; cx.notify(); });
     this.input.on("submit", (_e, cx) => { this.saveComment(); cx.notify(); });
+    this.following = null; // { step, kind }: a closer look at a step being asked for
     this.asking = false; // the question box under the step's text is open
     this.question = InputState.new({ placeholder: "Ask the agent about this step, then Enter" });
     this.question.on("focus", (_e, cx) => { this.typing = "question"; cx.notify(); });
@@ -197,7 +201,7 @@ export class Walkthrough {
       await autoGenerate(this, cx, this.turn); // the turn the tab shows: this terminal's newest, else the newest
     });
     cx.timer.every(1000, (cx) => this.tick(cx));
-    // Commands for keys.json: walkthrough.generate, .cancel, .next, .prev, .copy, .unread, .wrap, .task (write your own), .ask, .dialog, .pane, .tab.
+    // Commands for keys.json: walkthrough.generate, .cancel, .next, .prev, .copy, .unread, .wrap, .task (write your own), .ask, .deeper, .technical, .dialog, .pane, .tab.
     cx.spawn(async (cx) => {
       for (;;) {
         const name = String(await nextCommand()).replace(/^walkthrough\./, "").split(":")[0];
@@ -210,6 +214,8 @@ export class Walkthrough {
         else if (name === "wrap") this.wrap = !this.wrap;
         else if (name === "task") this.chooseTask("own", cx);
         else if (name === "ask") this.openAsk();
+        // Only the focused copy asks: each one would pay for its own answer. Not awaited: it takes seconds, and other commands go on meanwhile.
+        else if (FOLLOW_UPS.some((f) => f.key === name)) { if (this.inDialog || this.ownPane()?.focused) this.followUp(name, cx); }
         // Every copy hears a command: a pane or a tab moves only when it is the focused pane.
         else if (PLACEMENTS.some((pl) => pl.key === name) && (this.inDialog || this.ownPane()?.focused)) this.moveTo(name);
         cx.notify();
@@ -768,6 +774,44 @@ export class Walkthrough {
     cx.notify();
   }
 
+  /** A closer look at the shown step, from the model that wrote the walkthrough: asked once, then kept with it. */
+  async followUp(kind, cx) {
+    const s = this.view?.steps[this.step], asked = this.shown?.entry;
+    if (!s || s.outdated || this.following || !this.claude || asked.followUps?.[s.id]?.[kind]) return;
+    this.following = { step: s.id, kind };
+    cx.notify();
+    try {
+      const entry = await askFollowUp(asked, s, kind, this.diff?.what ?? "a change");
+      // A reload while it was asked read the entry before the answer was in it.
+      if (this.shown?.entry.key === entry.key && this.shown.entry.generatedAt === entry.generatedAt) this.shown = { ...this.shown, entry };
+    } catch (err) {
+      this.flash(`Couldn't get an answer: ${String(err?.message ?? err)}`);
+    }
+    this.following = null;
+    cx.notify();
+  }
+
+  /** A file the prose mentions: to the step, or the Not covered row, that holds it. */
+  openLink({ path, line }) {
+    const at = whereIs(this.view, path, line);
+    if (!at) return;
+    if ("file" in at) { this.go(this.view.steps.length); this.openFiles.add(at.file); }
+    else if (at.step === this.step) this.flash("That code is in this step, below.");
+    else this.go(at.step);
+  }
+
+  /** Prose with its mentions of the diff's files as links (lib/links.js): one paragraph per line, plain text when it mentions none. */
+  prose(id, text, paths) {
+    const paragraphs = text.split(/\n+/).map((p, i) => {
+      const linked = linkify(p, paths);
+      return !linked ? p : TextView.markdown(`${id}-${i}`, linked.markdown).on_link_click((url, cx) => {
+        const link = linked.links[Number(/walkthrough:(\d+)/.exec(url)?.[1])];
+        if (link) { this.openLink(link); cx.notify(); }
+      });
+    });
+    return paragraphs.length > 1 ? v_flex().gap(6).children(paragraphs.map((p) => div().child(p))) : paragraphs[0];
+  }
+
   /** The walkthrough shown, as Markdown on the clipboard: for a pull request, a review or a chat. */
   async copy(cx) {
     const text = this.markdown();
@@ -857,6 +901,7 @@ export class Walkthrough {
     else if (this.view && k === "u") this.unreadOnly = !this.unreadOnly;
     else if (this.view && k === "w") this.wrap = !this.wrap;
     else if (this.view?.steps[this.step] && k === "a") this.openAsk();
+    else if (this.view?.steps[this.step] && FOLLOW_KEY[k]) cx.spawn(async (cx) => this.followUp(FOLLOW_KEY[k], cx));
     else if (this.taskView && k === "t") this.go(-1);
     else return;
     cx.notify();
@@ -1360,10 +1405,18 @@ export class Walkthrough {
     const part = this.view.parts[s.part];
     const total = this.view.steps.length;
     const read = isRead(s, this.read);
+    const entry = this.shown.entry, at = `${s.id}-${entry.generatedAt}`;
+    // A file both staged and unstaged is one path to link to.
+    const paths = [...new Set(this.diff.files.map((f) => f.path))];
+    const answers = followUpsOf(entry, s.id);
     return v_flex().id(`page-${s.id}-${this.shown.entry.generatedAt}`).flex_1().min_h(0).overflow_y_scrollbar().px(22).py(16).gap(10)
       .child(h_flex().gap(8).items_center()
         .child(div().flex_1().text_size(TEXT.label).font_semibold().text_color(t.dim).child(`${part.title.toUpperCase()}  ·  STEP ${s.position} OF ${total}`))
         .child(button(t, "ask", "Ask", (_e, cx) => { this.asking ? this.closeAsk() : this.openAsk(); cx.notify(); }, { kind: "ghost", small: true, tooltip: "Ask the agent about this step: it answers in its terminal (a)" }))
+        .children(FOLLOW_UPS.map((f) => button(t, `follow-${f.key}`, f.name, (_e, cx) => cx.spawn(async (cx) => this.followUp(f.key, cx)), {
+          kind: "ghost", small: true, disabled: s.outdated || Boolean(this.following) || !this.claude || answers.some((a) => a.key === f.key),
+          tooltip: s.outdated ? "Its code has changed: regenerate to ask about it as it is now" : `${f.about}, from ${modelOf(entry.model).name}, shown under the explanation (${Object.keys(FOLLOW_KEY).find((k) => FOLLOW_KEY[k] === f.key)})`,
+        })))
         .child(button(t, "read-toggle", read ? "✓ Read" : "Mark read", (_e, cx) => { this.toggleRead(); cx.notify(); }, {
           kind: "ghost", small: true, disabled: s.outdated,
           tooltip: s.outdated ? "Its code has changed: regenerate to read it as it is now" : read ? "Mark unread (x)" : "Mark read (x)",
@@ -1380,10 +1433,14 @@ export class Walkthrough {
           ? asks.map((a) => toTask(`for-${s.id}-${a.id}`, chip(t, `For: ${clip(a.text, 64)}`, t.ansi2, t.ansi2 + "12").tooltip(a.text)))
           : [toTask(`for-${s.id}-none`, chip(t, "Not tied to a request", null, t.raised).tooltip("No request in the task points at this step: supporting work, or work the task doesn't mention."))]));
       })
-      .child(div().max_w(820).text_size(TEXT.strong).line_height(1.6).child(s.text))
+      .child(div().max_w(820).text_size(TEXT.strong).line_height(1.6).child(this.prose(`text-${at}`, s.text, paths)))
       .when(this.asking, (e) => e.child(this.questionBox(t)))
-      .when(s.notes.length > 0, (e) => e.child(v_flex().w_full().max_w(820).gap(6).children(s.notes.map((n) =>
-        h_flex().w_full().gap(8).items_start().child(chip(t, NOTE_LABEL[n.kind], t.blocked, t.blocked + "12").tooltip(NOTE_ABOUT[n.kind])).child(div().flex_1().min_w(0).pt(1).text_size(TEXT.ui).line_height(1.5).text_color(t.muted).child(n.text))))))
+      .children(answers.map((a) => v_flex().w_full().max_w(820).p(10).gap(4).rounded(8).border_1().border_color(t.border).bg(t.raised)
+        .child(div().text_size(TEXT.label).font_semibold().text_color(t.dim).child(a.name.toUpperCase()))
+        .child(div().text_size(TEXT.ui).line_height(1.6).child(this.prose(`follow-${a.key}-${at}`, a.text, paths)))))
+      .when(this.following?.step === s.id, (e) => e.child(div().text_size(TEXT.body).text_color(t.dim).child(`Asking Claude ${modelOf(entry.model).name} for a closer look…`)))
+      .when(s.notes.length > 0, (e) => e.child(v_flex().w_full().max_w(820).gap(6).children(s.notes.map((n, i) =>
+        h_flex().w_full().gap(8).items_start().child(chip(t, NOTE_LABEL[n.kind], t.blocked, t.blocked + "12").tooltip(NOTE_ABOUT[n.kind])).child(div().flex_1().min_w(0).pt(1).text_size(TEXT.ui).line_height(1.5).text_color(t.muted).child(this.prose(`note-${at}-${i}`, n.text, paths)))))))
       // The banner above and the Outdated chip say it already; this says how much.
       .when(s.outdated, (e) => e.child(h_flex().gap(6).items_center().flex_wrap().text_size(TEXT.body)
         .child(div().font_semibold().text_color(t.blocked).child(s.found.length ? `${s.missing} of ${s.missing + s.found.length} hunks` : "Every hunk"))

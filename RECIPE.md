@@ -145,7 +145,7 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
        such step. With no concrete request: a `muted` notice instead of the rows. A new
        walkthrough with a task opens here while none of its steps is read.
      - Page, scrolling, padding 16px 22px, gap 10: "PART · STEP 2 OF 5" 10.5px semibold
-       `dim`, at its right a small ghost "Ask" and "Mark read" / "✓ Read" (disabled on an outdated
+       `dim`, at its right small ghost "Ask", "Deeper", "More technical" and "Mark read" / "✓ Read" (disabled on an outdated
        step); the title 17px semibold with tinted chips **Key change** (`accent` on `accent`
        + `14`), **Context** (on `raised`), **Outdated** (`blocked` on `blocked` + `14`);
        with a task that names requests, a chip per request the step serves, "For: Retry
@@ -228,6 +228,23 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
   (`path:line` `` `code` ``: text) into the chosen agent with `hc send` (which presses
   Enter), then clears them. Agents offered: those in this space, the one the dialog opened
   over first, then the most recently active.
+- A closer look: **Deeper** (`d`, `walkthrough.deeper`) and **More technical** (`m`,
+  `walkthrough.technical`) on a step's page ask the model that wrote the walkthrough, in
+  its language, about that step alone (`lib/followup.js`: the step's title and text, and
+  its hunks with every line numbered). It is one awaited `claude -p` with the generation's
+  flags and a `{ text }` schema, from a `follow-<id>/` folder removed afterwards, with a
+  3 minute limit. While it runs the page says "Asking Claude Haiku for a closer look…" and
+  both buttons are off. The answer shows under the explanation in a raised box headed
+  DEEPER or MORE TECHNICAL, and is stored in the entry (`followUps[stepId][kind] = { text,
+  cost }`), so each is asked once per step and walkthrough; its button stays off. Off too on
+  an outdated step and without `claude`. The commands act in the focused copy only. Not in Copy as Markdown.
+- File links: a file of the diff named in a step's text, a note or an answer, as
+  `path`, `path:line` or `path:start-end`, is a link (`lib/links.js`). A bare name
+  counts when exactly one file ends with it. Such prose is drawn with `TextView.markdown`
+  (the rest of it escaped, one `TextView` per paragraph) and `on_link_click`; a paragraph naming no file stays a plain string.
+  A click goes to the step whose hunk holds the line, else Not covered when a hunk there
+  does (opening the file's row), else the file's first step, else its Not covered row. On
+  the step already shown it flashes "That code is in this step, below."
 - Ask: **Ask** on a step's page (or `a`, or `walkthrough.ask`) opens a box under the
   step's text (input, the agent dropdown, Send, Cancel; Enter sends, Esc closes). Send
   pastes "Question about step N, "title", of the walkthrough of …", the step's text
@@ -361,8 +378,8 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
   `shared("walkthrough.prefs")`. The first language is the system's (`defaults read -g
   AppleLanguages`, else `$LANG`).
 - Keys from `keys.json`: `cmd-shift-e` → `mod.open:walkthrough`. Mod commands:
-  `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.task` (opens the task editor), `.ask` (opens the question box), `.dialog`, `.pane`, `.tab` (move it there). In the view, `x`
-  marks the step read or unread, `u` toggles Unread only, `t` opens the task page and `a` the question box.
+  `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.task` (opens the task editor), `.ask` (opens the question box), `.deeper`, `.technical` (a closer look at the step), `.dialog`, `.pane`, `.tab` (move it there). In the view, `x`
+  marks the step read or unread, `u` toggles Unread only, `t` opens the task page, `a` the question box, and `d` / `m` ask for Deeper / More technical.
 
 ## Opening it from another mod
 
@@ -420,7 +437,7 @@ Ways in (`OverlaySpec` takes another mod's name and props):
   name only), `digest.js` (`=== path (status) [scope]`, then `[h1] @@ … @@` and the lines;
   generated files left out), `prompt.js`, `walkthrough.js` (JSON schema, `normalize`,
   `parseJson`, `overlay`), `sources.js` (git), `cache.js` (keys, limits), `job.js`
-  (`run.sh`, reading the answer), `languages.js`, `comments.js`, `read.js` (read keys,
+  (`run.sh`, reading the answer), `languages.js`, `comments.js`, `followup.js` (the closer look: prompt, schema, storing), `links.js` (file mentions as links, `whereIs`), `read.js` (read keys,
   `stepRead`, `markStep`/`unmarkStep`, `prune`, `mergeRead`, `changedSince`), `task.js`
   (where a task comes from, transcripts, `resolveTask`, `taskKey`, the transcript listing
   script).
@@ -609,6 +626,9 @@ without copying again). It prints nothing and always exits 0.
   "its parent" again shows the single commit's cached walkthrough.
 - Clicking a line, typing and Enter adds a comment under it; Send pastes it into the
   chosen agent.
+- `d` on a step: a DEEPER box appears under the explanation within seconds, the button turns
+  off, and it is still there after closing and reopening. A `path:line` in it goes to the
+  step holding that line.
 - `a` on a step, a question and Enter: the agent gets the step's title, text and files with
   the question; the footer says "Sent the question to …".
 - With the hooks added, a prompt that edits a file and adds one shows on Last turn as

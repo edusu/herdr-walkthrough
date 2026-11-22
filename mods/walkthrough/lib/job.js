@@ -28,6 +28,9 @@ export const isRunCommand = (command) => ["--json-schema", "--no-session-persist
 
 const shellQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 
+/** One run, from a folder holding schema.json, system.txt and prompt.txt; $1 is the model. Its answer is its stdout. */
+export const CLAUDE_RUN = `claude ${CLAUDE_FLAGS.map(shellQuote).join(" ")} --model "$1" --json-schema "$(cat schema.json)" --system-prompt "$(cat system.txt)" < prompt.txt`;
+
 /**
  * The script a job folder runs: `sh run.sh <model> <seconds>`. A watchdog
  * stops claude after <seconds>, so a hung run ends even when no window is
@@ -37,7 +40,7 @@ export function jobScript() {
   return `#!/bin/sh
 # One walkthrough generation. Written by the walkthrough mod for Herdr.
 cd "$(dirname "$0")" || exit 1
-claude ${CLAUDE_FLAGS.map(shellQuote).join(" ")} --model "$1" --json-schema "$(cat schema.json)" --system-prompt "$(cat system.txt)" < prompt.txt > out.json 2> err.txt &
+${CLAUDE_RUN} > out.json 2> err.txt &
 pid=$!
 echo $pid > pid
 ( waited=0

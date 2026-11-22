@@ -34,6 +34,13 @@ click? Add the two [Last turn hooks](#last-turn).
   points come before the code that uses them; tests sit with the code they prove. Steps
   are grouped into a few parts, listed on the left, and each one's code is shown in your
   theme's syntax colours.
+- **A closer look, when a step needs one.** **Deeper** explains how the step works one level
+  further down; **More technical** restates it in precise terms: types, contracts, edge
+  cases. The answer comes from the model that wrote the walkthrough, sits under the
+  explanation and is kept with it, so it is asked once.
+- **File names are links.** A file of the diff named in an explanation, a note or an answer
+  (`src/retry.js:40`) takes you to the step that holds that line, or to its row under
+  Not covered.
 - **Where to look first.** *Key change* marks the step or two the rest depends on;
   *Context* marks edits that are safe to skim.
 - **Notes, only when they matter.** A step can say what you accept by taking the change:
@@ -119,6 +126,7 @@ says *where* a request shows up, never whether it's done well.
 | **w** | Wrap long code lines to fit, or scroll them sideways (also the **Wrap lines** button) |
 | **t** | The task page (**←** from the first step goes there too) |
 | **a** | Ask the agent about the step (also the step's **Ask** button) |
+| **d** / **m** | A closer look at the step from the walkthrough's model: **Deeper** / **More technical** |
 | **Esc** | Close a picker, the task editor, a comment or a question, then the dialog |
 
 <details>
@@ -128,7 +136,7 @@ says *where* a request shows up, never whether it's done well.
 | --- | --- |
 | **Matched against** menu | Found (default), Issue (only when one was found), Your own… (write it), or Off; kept per repository and tab |
 | Last turn → **⚡ Auto** | Off (default): only on Generate. One click turns it on: write the last turn's walkthrough without a click |
-| `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.wrap`, `.task`, `.ask` | Generate, cancel, move, Copy as Markdown, Unread only, wrap lines, write your own task and ask about the step |
+| `walkthrough.generate`, `.cancel`, `.next`, `.prev`, `.copy`, `.unread`, `.wrap`, `.task`, `.ask`, `.deeper`, `.technical` | Generate, cancel, move, Copy as Markdown, Unread only, wrap lines, write your own task, ask about the step, and Deeper / More technical on it |
 | `walkthrough.dialog`, `.pane`, `.tab` | Move it to a dialog, a pane beside the agent or a tab of its own |
 | `settings.lines` in `mod.json` | `"scroll"` (default) or `"wrap"`: how long lines start. [Better Config](https://github.com/munza/herdr-mods/tree/main/better-config) shows it |
 | `settings.font_size` in `mod.json` | The main text's size in px, 9 to 24 (default 13); the rest of the text keeps its proportion to it |
@@ -225,7 +233,8 @@ of the agent you opened it over, and a pane knows which turns are its tab's.
 ## Privacy and cost
 
 **Nothing is sent to a model until you press Generate**, except an agent's last turn while
-Auto is on (Haiku only, up to 300 hunks). Nothing is posted anywhere until you press
+Auto is on (Haiku only, up to 300 hunks). **Deeper** and **More technical** send one step's
+code, title and explanation to the walkthrough's model, once each, when you press them. Nothing is posted anywhere until you press
 **Post** or **Send to Notion** and confirm. The first time it opens, `ntn --version` runs once, locally, to
 tell whether to offer Send to Notion; nothing reaches Notion then.
 

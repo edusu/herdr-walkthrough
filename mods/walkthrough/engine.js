@@ -6,6 +6,7 @@
 //   jobs/<place>/          a generation in progress (run.sh, prompt, answer)
 //   turns/<repo>/<turn>/   an agent's turn, written by hooks/turn.sh (see lib/turns.js)
 //   read/<repo>.json       the hunks read in a repository, by content
+//   follow-<id>/           a closer look at one step being asked for (lib/followup.js), gone when answered
 //   notion.md              the last walkthrough sent to Notion, as ntn read it
 //   preferences.md         optional: the reader's own wishes, added to every prompt
 
@@ -17,7 +18,8 @@ import { schemaFor, normalize, VERSION } from "./lib/walkthrough.js";
 import { cacheKey, codeKey, placeKey, deadline, MAX_PROMPT_CHARS } from "./lib/cache.js";
 import { longHash } from "./lib/hash.js";
 import { mergeRead } from "./lib/read.js";
-import { jobScript, readOutcome, isRunCommand } from "./lib/job.js";
+import { jobScript, readOutcome, isRunCommand, CLAUDE_RUN } from "./lib/job.js";
+import { followPrompt, readFollowUp, withFollowUp, FOLLOW_SCHEMA } from "./lib/followup.js";
 import { parseListing, resolveEnds, LISTING } from "./lib/turns.js";
 import { taskKey, taskCacheKey, parseTranscript, projectSlug, jsonPath, TRANSCRIPTS } from "./lib/task.js";
 import { notionSettings, sendPage } from "./lib/notion.js";
@@ -355,6 +357,37 @@ export async function finishJob(job) {
     return entry;
   } finally {
     await exec("rm", ["-rf", claimed]);
+  }
+}
+
+// Room for Opus on a long step; exec's own default would stop it at 30 seconds.
+const FOLLOW_TIMEOUT = 180_000;
+
+/**
+ * Asks the walkthrough's model for a closer look at one step (lib/followup.js)
+ * and keeps the answer in the entry. Awaited, not a background job: it takes
+ * seconds, and one lost to a closed window costs a fraction of a cent.
+ * @returns {Promise<any>} the entry with the answer
+ */
+export async function askFollowUp(entry, step, kind, what) {
+  const dir = `${dataDir()}/follow-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  const { system, prompt } = followPrompt({ kind, step, title: entry.walkthrough.title, what, language: entry.language });
+  await exec("mkdir", ["-p", dir]);
+  try {
+    await writeTextFile(`${dir}/system.txt`, system, null);
+    await writeTextFile(`${dir}/prompt.txt`, prompt, null);
+    await writeTextFile(`${dir}/schema.json`, JSON.stringify(FOLLOW_SCHEMA), null);
+    const r = await exec("sh", ["-c", `cd "$0" && ${CLAUDE_RUN}`, dir, entry.model], { timeout: FOLLOW_TIMEOUT });
+    const { raw, cost } = readOutcome({ out: r.stdout, err: r.stderr, code: String(r.code) });
+    const answer = { text: readFollowUp(raw), cost };
+    // Read again: another window may have stored an answer meanwhile. An entry regenerated meanwhile is another reading and is left as it is.
+    const stored = await readJson(entryPath(entry.key));
+    if (stored?.generatedAt !== entry.generatedAt) return withFollowUp(entry, step.id, kind, answer);
+    const next = withFollowUp(stored, step.id, kind, answer);
+    await write(entryPath(entry.key), JSON.stringify(next));
+    return next;
+  } finally {
+    await exec("rm", ["-rf", dir]).catch(() => undefined);
   }
 }
 
