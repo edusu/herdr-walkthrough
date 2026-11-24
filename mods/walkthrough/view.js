@@ -23,7 +23,7 @@ import { estimateTokens, codeKey, placeKey, MAX_PROMPT_CHARS } from "./lib/cache
 import { formatComments, formatQuestion, addComment, sameSpot } from "./lib/comments.js";
 import { toMarkdown, recapMarkdown } from "./lib/export.js";
 import { recapStrings } from "./lib/recap-language.js";
-import { linkify, whereIs } from "./lib/links.js";
+import { linkify, whereIs, isWebLink } from "./lib/links.js";
 import { FOLLOW_UPS, followUpsOf } from "./lib/followup.js";
 import { readKey, hunkRead, isRead, markStep, unmarkStep, mergeRead, changedSince } from "./lib/read.js";
 import { readDiff, readPreferences, matters, keyFor, findShown, preparePrompt, fits, promptChars, jobOf, startJob, alive, finished, cancelJob, finishJob, copyText, postComment, sendToNotion, notionSetup, settingsOf, askFollowUp, backendVersion, systemLocale, ensureDirs, loadRead, saveRead, transcriptMessages } from "./engine.js";
@@ -76,6 +76,7 @@ const savePrefs = (change) => setShared(PREFS, { ...prefs(), ...change });
 // Task choices are kept per repository and source; past this many the oldest go.
 const MAX_TASK_CHOICES = 100;
 const FOLLOW_KEY = { d: "deeper", m: "technical" };
+const openWebLink = (url, cx) => { if (isWebLink(url)) cx.open_url(url); };
 
 /** Under `herdr-app check` the mod is drawn once and runs nothing: no GitHub request. */
 const checking = () => {
@@ -974,11 +975,9 @@ export class Walkthrough {
    */
   prose(id, text, paths, { markdown = false } = {}) {
     const view = (key, source, linked) => {
-      const el = TextView.markdown(key, linked?.markdown ?? source);
-      // A click handler replaces the default opening of URLs: a link that isn't a file mention still opens.
-      return !linked ? el : el.on_link_click((url, cx) => {
-        const at = /walkthrough:(\d+)/.exec(url), link = at ? linked.links[Number(at[1])] : null;
-        if (link) { this.openLink(link); cx.notify(); } else cx.open_url(url);
+      return TextView.markdown(key, linked?.markdown ?? source).on_link_click((url, cx) => {
+        const at = /^walkthrough:(\d+)$/.exec(url), link = at ? linked?.links[Number(at[1])] : null;
+        if (link) { this.openLink(link); cx.notify(); } else openWebLink(url, cx);
       });
     };
     if (markdown) return view(id, text, linkify(text, paths, { markdown: true })).selectable(true);
@@ -1693,10 +1692,10 @@ export class Walkthrough {
     const change = (c, i) => h_flex().id(`recap-change-${i}`).w_full().gap(12).items_start().p(14).rounded(12).border_1().border_color(t.border).bg(t.surface ?? t.raised)
       .child(div().flex_none().size(grow(24)).rounded_full().bg(t.accent + "24").text_color(t.accent).text_size(TEXT.small).font_semibold().flex().items_center().justify_center().child(String(i + 1)))
       .child(v_flex().flex_1().min_w(0).gap(8)
-        .child(div().text_size(TEXT.strong).line_height(1.55).font_medium().child(TextView.markdown(`recap-change-text-${i}`, c.description)))
+        .child(div().text_size(TEXT.strong).line_height(1.55).font_medium().child(TextView.markdown(`recap-change-text-${i}`, c.description).on_link_click(openWebLink)))
         .child(h_flex().gap(8).items_start()
           .child(div().flex_none().pt(2).text_size(TEXT.label).font_semibold().text_color(t.dim).child(upper(words.motivation, words.tag)))
-          .child(div().flex_1().min_w(0).text_size(TEXT.ui).line_height(1.55).text_color(t.muted).child(TextView.markdown(`recap-motivation-${i}`, c.motivation))))
+          .child(div().flex_1().min_w(0).text_size(TEXT.ui).line_height(1.55).text_color(t.muted).child(TextView.markdown(`recap-motivation-${i}`, c.motivation).on_link_click(openWebLink))))
         .child(h_flex().gap(6).flex_wrap().children(c.paths.map(filePill))));
     return pageFrame(`recap-${this.shown.entry.generatedAt}`)
       .child(eyebrow(t, words.recap, null, words.tag))
@@ -1706,7 +1705,7 @@ export class Walkthrough {
       .when(!w.recap, (e) => e.child(callout(t, t.muted, null, recapMarkdown(null).replace(/^###[^\n]*\n+/, "").trim())))
       .when(Boolean(w.recap?.architecture.description), (e) => e
         .child(heading(words.architecture))
-        .child(div().max_w(820).text_size(TEXT.strong).line_height(1.6).child(TextView.markdown("architecture-description", w.recap.architecture.description).selectable(true))))
+        .child(div().max_w(820).text_size(TEXT.strong).line_height(1.6).child(TextView.markdown("architecture-description", w.recap.architecture.description).on_link_click(openWebLink).selectable(true))))
       .when(Boolean(w.recap) && !w.recap.architecture.mermaid, (e) => e.child(div().text_size(TEXT.body).text_color(t.dim).child(words.noBlueprint)))
       .when(Boolean(w.recap?.architecture.mermaid), (el) => el
         .child(v_flex().w_full().gap(10).p(12).rounded(12).border_1().border_color(t.border).bg(t.surface ?? t.raised)

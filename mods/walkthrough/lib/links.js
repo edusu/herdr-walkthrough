@@ -70,3 +70,6 @@ export function whereIs(view, path, line = null) {
   const first = stepWith(() => true);
   return row(rowWith((u) => u.hunks.some(holds))) ?? (first >= 0 ? { step: first } : row(rowWith(() => true)));
 }
+
+/** Whether a link in the model's prose may be opened: web pages only, so a diff's text can't start a file or an app through a link. */
+export const isWebLink = (url) => /^https?:\/\//i.test(String(url));

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { linkify, whereIs } from "../mods/walkthrough/lib/links.js";
+import { linkify, whereIs, isWebLink } from "../mods/walkthrough/lib/links.js";
 
 const PATHS = ["src/app/main.js", "src/lib/retry.js", "test/main.js", "README.md"];
 
@@ -70,4 +70,9 @@ test("a path alone, or a line no hunk holds, goes to the file's first step", () 
 test("a file no step touches goes to Not covered, and an unknown one nowhere", () => {
   assert.deepEqual(whereIs(VIEW, "c.lock"), { file: "working:c.lock" });
   assert.equal(whereIs(VIEW, "nope.js", 3), null);
+});
+
+test("only web links in the model's prose open", () => {
+  assert.ok(isWebLink("https://example.com/a") && isWebLink("HTTP://example.com"));
+  for (const url of ["file:///etc/passwd", "javascript:alert(1)", "vscode://file/x", "walkthrough:0", "/usr/bin/open", ""]) assert.equal(isWebLink(url), false);
 });
