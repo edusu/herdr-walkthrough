@@ -1211,7 +1211,7 @@ export class Walkthrough {
     const open = (what) => (_e, cx) => { this.togglePicker(what); cx.notify(); };
     const label = (text) => div().flex_none().text_size(TEXT.small).text_color(t.dim).child(text);
     const auto = this.auto !== "off";
-    const narrow = (this.width ?? 1000) < 1100;
+    const narrow = (this.width ?? 1000) < grow(1100); // the row's text grows with font_size, so its breakpoint does too
     const which = h_flex().min_w(0).gap(8).items_center().flex_wrap()
       .when(Boolean(this.view) && this.wide(), (el) => el.child(button(t, "toggle-sidebar", this.sidebar ? "«" : "»",
         (_e, cx) => { this.sidebar = !this.sidebar; savePrefs({ sidebar: this.sidebar }); cx.notify(); },

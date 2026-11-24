@@ -101,7 +101,10 @@ export async function programOf(backend) {
 /** Whether a backend's program can be started: its version, or null. */
 export async function backendVersion(backend) {
   try {
-    const r = await exec(await programOf(backend), ["--version"]);
+    // No await before Claude's exec: a copy opened by another copy's click (a Placement move) starts inside that copy's
+    // callback, and a call made a microtask later counts as the closing copy's, so it is cancelled and never answers.
+    const version = (program) => exec(program, ["--version"]);
+    const r = await (backendOf(backend).key === "pi" ? programOf(backend).then(version) : version("claude"));
     return r.code === 0 ? r.stdout.trim() : null;
   } catch { return null; }
 }

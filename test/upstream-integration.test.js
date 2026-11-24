@@ -26,7 +26,8 @@ export const Background={solid:(c)=>c,stop:(c)=>c,linear_gradient:(a,b)=>b,patte
 export const spaces=()=>[],panes=()=>[],agents=()=>[],focused=()=>null,props=()=>({}),settings=()=>({});
 export const shared=()=>null,setShared=()=>{},theme=()=>({}),closeOverlay=()=>{},openOverlay=()=>{},run=()=>{},notify=()=>{};
 export const home=()=>'/synthetic',appHome=()=>'/synthetic';
-export const exec=async()=>{throw new Error('Native execution is forbidden in this test');};
+export const execCalls=[];
+export const exec=async(...call)=>{execCalls.push(call);throw new Error('Native execution is forbidden in this test');};
 export const hc=exec,nextCommand=exec,watchFolder=exec,readTextFile=exec,writeTextFile=exec;
 `);
 const root = new URL('../mods/walkthrough/', import.meta.url), modules = new Map();
@@ -47,8 +48,8 @@ async function load(name) {
   return pending;
 }
 const { Walkthrough } = await import(await load('view.js'));
-const { preparePrompt } = await import(await load('engine.js'));
-const { Element } = await import(bindings);
+const { preparePrompt, backendVersion } = await import(await load('engine.js'));
+const { Element, execCalls } = await import(bindings);
 globalThis.window = { paint_path: () => new Element() };
 const colors = Object.fromEntries(['foreground','surface','background','popover','raised','ansi1','ansi2','ansi3','ansi4','ansi5','ansi6','muted','dim','accent','border','selected','selection','hover','blocked'].map((k) => [k,'#808080']));
 const cx = { notify() {}, stop_propagation() {} };
@@ -223,4 +224,12 @@ test('a newer release shows the update strip; Later and Stop checking go to the 
   assert.ok(find(strip,'update-copy'));assert.ok(find(strip,'update-notes'));
   click(strip,'update-later');click(strip,'update-stop');
   assert.deepEqual(calls,[['later','v9.9.9'],['stop']]);
+});
+
+test("Claude's version is asked for with no await before it, so a moved copy's call is its own", async () => {
+  // Herdr counts a call made a microtask after a copy's init as the opener's; it is cancelled when the opener closes.
+  execCalls.length = 0;
+  const asked = backendVersion('claude');
+  assert.deepEqual(execCalls, [['claude', ['--version']]]);
+  assert.equal(await asked, null);
 });
