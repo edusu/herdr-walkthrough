@@ -25,8 +25,12 @@ export function cacheKey({ top, source, model, language, preferences = "", files
 /** One pointer (the walkthrough shown last) and one running job per repository and source. */
 export const placeKey = (top, source) => longHash(`${top}\n${source}`);
 
-/** A generation's time limit: it guards against a hang and grows with the diff. */
-export const deadline = (hunkCount) => Math.min(15 * 60, 120 + hunkCount) * 1000;
+/**
+ * A generation's time limit: it guards against a hang and grows with the diff.
+ * The base covers the recap, blueprint and contracts written before any step,
+ * which a small diff needs as much as a large one.
+ */
+export const deadline = (hunkCount) => Math.min(15 * 60, 240 + 2 * hunkCount) * 1000;
 
 /** Rough tokens for text: enough to say "≈ 12k tokens" and to refuse a diff that can't fit. */
 export const estimateTokens = (chars) => Math.ceil(chars / 3.6);

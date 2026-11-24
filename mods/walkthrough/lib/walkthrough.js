@@ -1,3 +1,10 @@
+import { CONTRACT_SCHEMA, normalizeContracts } from "./contracts.js";
+import { COMPONENT_SCHEMA, normalizeComponents } from "./blueprint.js";
+import { CONNECTION_SCHEMA, normalizeConnections } from "./connections.js";
+import { GROUP_SCHEMA, normalizeGroups } from "./groups.js";
+import { parseMermaid, canonicalMermaid } from "./diagram.js";
+import { idOf } from "./alias.js";
+
 // The walkthrough's shape, how a model's answer is made safe, and how a stored
 // walkthrough is laid over the diff as it is now.
 //
@@ -7,7 +14,7 @@
 
 export const VERSION = 1;
 // Part of every cache key: a different prompt writes a different walkthrough.
-export const PROMPT_VERSION = 1;
+export const PROMPT_VERSION = 3;
 
 export const LIMITS = { parts: 6, steps: 16, hunksPerStep: 14, partTitle: 28, notes: 6, notesPerStep: 2, skipped: 200, asks: 12, askText: 200 };
 export const WEIGHTS = ["key", "normal", "skim"];
@@ -19,10 +26,27 @@ const str = { type: "string" };
 export const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["title", "summary", "parts", "skipped"],
+  required: ["title", "summary", "recap", "contracts", "parts", "skipped"],
   properties: {
     title: str,
     summary: str,
+    contracts: CONTRACT_SCHEMA,
+    recap: {
+      type: "object", additionalProperties: false,
+      required: ["changes", "architecture"],
+      properties: {
+        changes: { type: "array", items: {
+          type: "object", additionalProperties: false,
+          required: ["description", "motivation", "paths"],
+          properties: { description: str, motivation: str, paths: { type: "array", items: str } },
+        } },
+        architecture: {
+          type: "object", additionalProperties: false,
+          required: ["description", "mermaid", "components", "connections", "groups"],
+          properties: { description: str, mermaid: str, components: COMPONENT_SCHEMA, connections: CONNECTION_SCHEMA, groups: GROUP_SCHEMA },
+        },
+      },
+    },
     parts: {
       type: "array",
       items: {
@@ -94,9 +118,6 @@ const text = (value, max = 0) => {
 
 const fail = (message) => Object.assign(new Error(message), { code: "invalid" });
 
-/** The hunk id an alias the model wrote ("h3", "[h3]") stands for, or undefined. */
-const idOf = (idByAlias, alias) => idByAlias[typeof alias === "string" ? alias.trim().replace(/^\[|\]$/g, "") : ""];
-
 /**
  * A model's answer → a walkthrough whose steps hold real hunk ids.
  * @param {any} raw the parsed answer
@@ -164,9 +185,59 @@ export function normalize(raw, idByAlias, digestFiles = [], { asks: withTask = f
     skipped.push({ path, note });
   }
 
+  // Steps are the only part an answer must have. A recap, blueprint or contract
+  // detail that doesn't hold up is left out and counted, never failing the run.
+  const recapOmit = { count: 0 }, contractOmit = { count: 0 };
+  const recap = normalizeRecap(raw.recap, digestFiles, idByAlias, recapOmit);
+  const contracts = normalizeContracts(raw.contracts, idByAlias, digestFiles, contractOmit);
   const asks = withTask ? normalizeAsks(raw.asks, idByAlias) : null;
-  return { title: text(raw.title, 140) || "Walkthrough", summary: text(raw.summary), parts, skipped, dropped, asks };
+  const omitted = { recap: recapOmit.count, contracts: contractOmit.count };
+  return {
+    recap, contracts, asks, title: text(raw.title, 140) || "Walkthrough", summary: text(raw.summary), parts, skipped, dropped,
+    ...(omitted.recap || omitted.contracts ? { omitted } : {}),
+  };
 }
+
+/**
+ * The recap: what changed and why, and the architecture it lands in. Every
+ * part is checked against the digest, and what doesn't hold up is left out and
+ * counted in `omit.count`: a change without its reason
+ * or real files, a diagram outside the drawn subset (the blueprint then goes
+ * with it, the description stays), a component, label or boundary without
+ * evidence. Files no change names are listed under `other`, never lost.
+ */
+function normalizeRecap(raw, files, idByAlias, omit = { count: 0 }) {
+  // None at all reads as a report from before recaps: the page offers to regenerate.
+  if (!raw || typeof raw !== "object") return null;
+  const known = new Set(files.map((f) => f.path));
+  const changes = [];
+  for (const c of Array.isArray(raw?.changes) ? raw.changes : []) {
+    const description = text(c?.description), motivation = text(c?.motivation);
+    const paths = [...new Set((Array.isArray(c?.paths) ? c.paths : []).map((p) => text(p)).filter((p) => known.has(p)))];
+    if (!description || !motivation || !paths.length) { omit.count++; continue; }
+    changes.push({ description, motivation, paths });
+  }
+  const covered = new Set(changes.flatMap((c) => c.paths));
+  const other = [...known].filter((path) => !covered.has(path));
+  const rawArchitecture = raw?.architecture;
+  const architecture = { description: text(rawArchitecture?.description), mermaid: "" };
+  try {
+    architecture.mermaid = canonicalMermaid(rawArchitecture?.mermaid);
+  } catch {
+    omit.count++;
+  }
+  if (architecture.mermaid) {
+    const graph = parseMermaid(architecture.mermaid);
+    const components = normalizeComponents(rawArchitecture?.components, graph, idByAlias, files, omit);
+    const connections = normalizeConnections(rawArchitecture?.connections, graph, idByAlias, files, omit);
+    const groups = normalizeGroups(rawArchitecture?.groups, graph, components, idByAlias, files, omit);
+    if (components !== undefined) architecture.components = components;
+    if (connections !== undefined) architecture.connections = connections;
+    if (groups !== undefined) architecture.groups = groups;
+  }
+  return { changes, ...(other.length ? { other } : {}), architecture };
+}
+
 
 /**
  * The task's requests, each with real hunk ids. Coverage follows the hunks,

@@ -18,26 +18,40 @@ function resolve(name, paths) {
 }
 
 /**
- * One paragraph of prose as Markdown whose file mentions are links,
- * "walkthrough:<index>" into `links`; null when it mentions no file of the diff.
- * @param {string} text plain prose, without line breaks
+ * Prose as Markdown whose file mentions are links, "walkthrough:<index>" into
+ * `links`; null when it mentions no file of the diff.
+ * @param {string} text plain prose, one paragraph without line breaks; with `markdown`, Markdown kept as written
  * @param {string[]} paths the diff's files
+ * @param {{ markdown?: boolean }} [options] markdown: a code span that is only a mention becomes the link's label; other code is left alone
  * @returns {{ markdown: string, links: { path: string, line: number | null }[] } | null}
  */
-export function linkify(text, paths) {
+export function linkify(text, paths, { markdown = false } = {}) {
   const links = [];
-  let markdown = "", last = 0;
-  for (const m of text.matchAll(MENTION)) {
-    // A sentence's full stop is not the file's.
-    const name = m[1].replace(/[.-]+$/, "");
-    const path = resolve(name, paths);
-    if (!path) continue;
-    const label = m[2] && name === m[1] ? m[0] : name;
-    markdown += `${escape(text.slice(last, m.index))}[${escape(label)}](walkthrough:${links.length})`;
-    links.push({ path, line: label === name ? null : Number(m[2]) });
-    last = m.index + label.length;
+  const link = (label, path, line) => `[${label}](walkthrough:${links.push({ path, line }) - 1})`;
+  const mentions = (part, keep) => {
+    let out = "", last = 0;
+    for (const m of part.matchAll(MENTION)) {
+      // A sentence's full stop is not the file's.
+      const name = m[1].replace(/[.-]+$/, "");
+      const path = resolve(name, paths);
+      if (!path) continue;
+      const label = m[2] && name === m[1] ? m[0] : name;
+      out += `${keep(part.slice(last, m.index))}${link(escape(label), path, label === name ? null : Number(m[2]))}`;
+      last = m.index + label.length;
+    }
+    return out + keep(part.slice(last));
+  };
+  if (!markdown) {
+    const out = mentions(text, escape);
+    return links.length ? { markdown: escapeStart(out), links } : null;
   }
-  return links.length ? { markdown: escapeStart(markdown + escape(text.slice(last))), links } : null;
+  const out = text.replace(/(`+)([^`]+)\1|[^`]+|`+/g, (all, ticks, code) => {
+    if (!ticks) return mentions(all, (s) => s);
+    const m = new RegExp(`^${MENTION.source}$`).exec(code.trim());
+    const path = m && resolve(m[1], paths);
+    return path ? link(all, path, m[2] ? Number(m[2]) : null) : all;
+  });
+  return links.length ? { markdown: out, links } : null;
 }
 
 /**

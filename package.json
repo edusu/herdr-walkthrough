@@ -1,9 +1,9 @@
 {
   "name": "herdr-walkthrough",
-  "version": "0.8.1",
+  "version": "0.10.0",
   "private": true,
   "type": "module",
-  "description": "A Herdr mod: read a diff in the order it makes sense, explained step by step by Claude.",
+  "description": "A Herdr mod: read a diff in the order it makes sense, explained step by step by a model, through Claude Code or pi.",
   "license": "MIT",
   "scripts": {
     "test": "node --test test/*.test.js"

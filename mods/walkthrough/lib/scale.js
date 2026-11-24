@@ -7,7 +7,7 @@ export const DEFAULTS = { font_size: 13, scale: 1 };
 export const BOUNDS = { font_size: [9, 24], scale: [0.8, 1.6] };
 
 // font_size's default is BASE.base: the text the whole view is drawn in.
-const BASE = { caret: 9, badge: 9.5, tiny: 10, label: 10.5, small: 11, note: 11.5, body: 12, ui: 12.5, base: 13, strong: 13.5, heading: 14, title: 17, page: 18 };
+const BASE = { caret: 9, badge: 9.5, tiny: 10, label: 10.5, small: 11, note: 11.5, body: 12, ui: 12.5, base: 13, strong: 13.5, heading: 14, lead: 14.5, section: 15, title: 17, page: 18, display: 22, hero: 24 };
 
 /** Text sizes in px, by role, for the current font_size. */
 export const TEXT = { ...BASE };

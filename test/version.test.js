@@ -1,16 +1,17 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-// The installed copy's mod.json is how someone tells which release they have, so it
-// has to match the package version that the release is tagged with.
+// The installed copy's mod.json is how someone tells which release they have, and the
+// update check compares the latest release with VERSION: all three must agree, or a
+// release would keep offering itself as an update.
 const root = new URL("../", import.meta.url);
 const read = (path) => JSON.parse(readFileSync(new URL(path, root), "utf8"));
 
-test("every mod.json carries the package version", () => {
+test("mod.json and the update check carry the package version", async () => {
   const { version } = read("package.json");
   assert.match(version, /^\d+\.\d+\.\d+$/);
-  const mods = readdirSync(new URL("mods/", root));
-  assert.ok(mods.length > 0);
-  for (const name of mods) assert.equal(read(`mods/${name}/mod.json`).version, version, name);
+  assert.equal(read("mods/walkthrough/mod.json").version, version);
+  const { VERSION } = await import(new URL("mods/walkthrough/lib/update.js", root));
+  assert.equal(VERSION, version);
 });

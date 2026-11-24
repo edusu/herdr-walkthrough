@@ -35,6 +35,13 @@ test("prose that starts like a list or a heading stays a sentence", () => {
   assert.equal(linkify("3. README.md changes", PATHS).markdown, "3\\. [README.md](walkthrough:0) changes");
 });
 
+test("in Markdown, a code span that names a file becomes the link and the rest is kept as written", () => {
+  const out = linkify("Retries in `retry.js:40` and README.md use `max_tries`, not `src/lib/retry.js x`.", PATHS, { markdown: true });
+  assert.equal(out.markdown, "Retries in [`retry.js:40`](walkthrough:0) and [README.md](walkthrough:1) use `max_tries`, not `src/lib/retry.js x`.");
+  assert.deepEqual(out.links, [{ path: "src/lib/retry.js", line: 40 }, { path: "README.md", line: null }]);
+  assert.equal(linkify("Only `max_tries` here.", PATHS, { markdown: true }), null);
+});
+
 const hunk = (id, newStart, newLines) => ({ id, newStart, newLines });
 const VIEW = {
   steps: [
