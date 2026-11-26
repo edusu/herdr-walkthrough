@@ -110,7 +110,7 @@ export async function loadTurns(v) {
   }
   const before = v.turn;
   v.turns = turns;
-  ({ turn: v.turn, pinned: v.turnPinned } = keepTurn(turns, before, v.turnPinned, v.from));
+  ({ turn: v.turn, pinned: v.turnPinned } = keepTurn(turns, before, v.turnPinned, v.from, tabTerminals(v)));
   return before?.id !== v.turn?.id || before?.state !== v.turn?.state || before?.endTree !== v.turn?.endTree;
 }
 
@@ -145,10 +145,13 @@ export const turnItems = (v) => v.turns.map((t) => ({
   value: t, selected: t.id === v.turn?.id,
 }));
 
+/** The terminals of the agents in the view's Origin tab. */
+export const tabTerminals = (v) => agents().filter((a) => a.tab === v.tab).map((a) => a.address);
+
 /** A turn picked from the dropdown stays picked, unless it is the one that would be picked anyway. */
 export function chooseTurn(v, turn) {
   v.turn = turn;
-  v.turnPinned = turn.id !== pickTurn(v.turns, v.from)?.id;
+  v.turnPinned = turn.id !== pickTurn(v.turns, v.from, tabTerminals(v))?.id;
 }
 
 /**
@@ -164,7 +167,7 @@ export async function turnTick(v, cx) {
     if (agentStopped(v)) v.autoWanted = Date.now();
     if (v.autoWanted) {
       // The Stop hook writes the turn's end a moment after the agent reports it is done.
-      const turn = lastFinished(v.turns, agents().filter((a) => a.tab === v.tab).map((a) => a.address));
+      const turn = lastFinished(v.turns, tabTerminals(v));
       if (turn && turn.ended >= v.autoWanted - 60_000) { v.autoWanted = null; await autoGenerate(v, cx, turn); }
       else if (Date.now() - v.autoWanted > HOOK_WAIT) v.autoWanted = null;
     }

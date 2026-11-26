@@ -67,6 +67,8 @@ test("where turns end: done, interrupted (the session went on), running", () => 
   assert.equal(turnSource(turns[0]).endBig, null);
   assert.equal(pickTurn(turns, "t2").id, "3");
   assert.equal(pickTurn(turns, "t9").id, "4");
+  // Opened over no agent: its Origin tab's newest turn, not another tab's.
+  assert.equal(pickTurn(turns, null, ["t2"]).id, "3");
   assert.equal(pickTurn([], "t1"), null);
   assert.equal(lastFinished(turns), null);
   assert.equal(lastFinished(turns.slice(2)).id, "2");

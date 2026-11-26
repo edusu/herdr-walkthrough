@@ -232,7 +232,13 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
        when any is left.
      - Code: one bordered card (radius 10, on `background`); a 36px `raised` header per file
        with a bottom border ("▤", the path 12.5px medium, status or "renamed from x", then the
-       file's `+n` and `−n` as pills, `ansi2` / `ansi1` on their colour + `1f`); a 24px hunk
+       file's `+n` and `−n` as pills, `ansi2` / `ansi1` on their colour + `1f`, then a small ghost
+       **Copy path** that puts the repository-relative path, as shown, on the clipboard with
+       `cx.write_to_clipboard` and flashes "Copied <path>."). On a step's page the header of the
+       file whose rows are at the top of the page stays pinned there, with `shadow_xs`, until the
+       next file's header pushes it up (`lib/sticky.js`: the page's `ScrollHandle`, fresh on every
+       page, and the card's and each file's heights from `on_size_change`; looked at on the wheel,
+       60 ms after it, and on pointer moves, redrawn only when the pinned header moves); a 24px hunk
        label on `surface` instead of git's `@@`
        line (which is its tooltip), divided from the lines above it: "Line 12" (where it
        starts in the new file; in the old one when nothing of it is left), "⋯ 28 lines · Line
@@ -303,7 +309,9 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
   "Comments from reading the walkthrough of …" and one line per comment
   (`path:line` `` `code` ``: text) into the chosen agent with `hc send` (which presses
   Enter), then clears them. Agents offered: those in this space, the one the dialog opened
-  over first, then the most recently active.
+  over first, then those of its Origin tab, then the rest, each most recently active first
+  (`lib/comments.js: agentOrder`). A copy opened as a pane or tab by another mod has no
+  terminal it came from (a mod pane's `focused().terminal` is null): its tab decides.
 - A closer look: **Deeper** (`d`, `walkthrough.deeper`) and **More technical** (`m`,
   `walkthrough.technical`) on a step's page ask the model that wrote the walkthrough, in
   its language, about that step alone (`lib/followup.js`: the step's title and text, and
@@ -366,8 +374,8 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
   program and the terminal.
 - **Last turn** reads `~/.herdr/walkthrough/turns/<repo>/` (`<repo>`: the first 16 digits of
   `printf %s <top> | git hash-object --stdin`), watched with `watchFolder`, newest turn
-  first; the turn shown first is the newest of the terminal the dialog opened over, else the
-  newest, and it stays shown while it is listed. A newer one brings a banner "There's a
+  first; the turn shown first is the newest of the terminal the dialog opened over, else of its
+  Origin tab's agents, else the newest, and it stays shown while it is listed. A newer one brings a banner "There's a
   newer turn." (its prompt's first line under it) with **Show**, unless the shown one was
   picked by hand. A turn is `git diff <start tree> <end tree>` with
   `GIT_ALTERNATE_OBJECT_DIRECTORIES` set to the turn's `objects/` (and the next turn's, for

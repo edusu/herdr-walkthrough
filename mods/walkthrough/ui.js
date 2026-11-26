@@ -50,8 +50,8 @@ export const tag = (t, text, color = t.dim, fill = t.raised, size = TEXT.label) 
   .bg(fill).text_size(size).font_semibold().text_color(color).child(text);
 
 /** A report page's frame: scrolls, with the same margins on every page (the width maths in view.js's contentWidth follow them). */
-export const PAGE_PADDING = 28;
-export const pageFrame = (id) => v_flex().id(id).flex_1().min_h(0).overflow_y_scrollbar().px(PAGE_PADDING).pt(20).pb(28).gap(14);
+export const PAGE_PADDING = 28, PAGE_BOTTOM = 28;
+export const pageFrame = (id) => v_flex().id(id).flex_1().min_h(0).overflow_y_scrollbar().px(PAGE_PADDING).pt(20).pb(PAGE_BOTTOM).gap(14);
 
 /** A key cap, for the shortcuts shown beside what they do. */
 export const kbd = (t, text) => div().flex_none().px(5).h(grow(18)).min_w(grow(18)).flex().items_center().justify_center().rounded(5)

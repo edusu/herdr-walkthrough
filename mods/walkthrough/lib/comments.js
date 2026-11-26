@@ -19,6 +19,18 @@ export function formatComments(comments, what, { mixed = false } = {}) {
   return `Comments from reading the walkthrough of ${what}\n${items.join("\n")}`;
 }
 
+/**
+ * The agents a comment or question can go to, the default first: the terminal the
+ * walkthrough was opened over, then its Origin tab's agents, then the rest of its
+ * space, each most recently active first.
+ * @param {{ address: string, tab: string, space: string, seq: number }[]} agents
+ * @param {{ space: string | null, tab: string | null, from: string | null }} mine
+ */
+export function agentOrder(agents, { space, tab, from }) {
+  const rank = (a) => (a.address === from ? 0 : a.tab === tab ? 1 : 2);
+  return agents.filter((a) => !space || a.space === space).sort((a, b) => rank(a) - rank(b) || b.seq - a.seq);
+}
+
 /** One line of one diff: its source, its scope (staged or unstaged copy), path, number and side. */
 export const sameSpot = (a, b) => a.sk === b.sk && a.scope === b.scope && a.path === b.path && a.line === b.line && a.kind === b.kind;
 

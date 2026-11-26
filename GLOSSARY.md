@@ -25,5 +25,5 @@ The setting that writes a finished turn's walkthrough without a click; off unles
 _Avoid_: autogenerate, auto mode
 
 **Origin tab**:
-The agent's tab a walkthrough was first opened over; whatever its Placement, it watches that tab's agents and returns to it as a Dialog.
+The agent's tab a walkthrough was first opened over; whatever its Placement, it watches that tab's agents, sends comments and questions to them by default, and returns to it as a Dialog.
 _Avoid_: source tab, parent tab

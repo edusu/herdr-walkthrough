@@ -108,6 +108,9 @@ says *where* a request shows up, never whether it's done well.
 - **Outdated, live.** Each step is tied to the exact code it explains. Edit that code and
   the step is marked **Outdated** right away; new edits show under Not covered.
   **Regenerate** keeps what's still true.
+- **The file stays in sight.** Scrolling a step's code keeps its file's header pinned at the
+  top until the next file's header takes its place; **Copy path** on a header copies the
+  path it shows.
 - **What you've read, remembered.** Moving past a step marks it read (`x` toggles it).
   Ticks survive closing, staging and regenerating; only a real edit makes code unread
   again. `u` shows only what's left, and on reopening you're told which steps changed
@@ -118,7 +121,8 @@ says *where* a request shows up, never whether it's done well.
 ### Share it, or send it back
 
 - **Comment on any line**, then **Send** pastes your comments, with their code, into an
-  agent in the same space.
+  agent in the same space: by default the one it was opened over, else one in its own tab, so
+  several walkthroughs open at once each talk to their own agent.
 - **Ask** on a step pastes your question, with the step's title, explanation and files, into
   an agent in the same space. The agent answers in its terminal; the walkthrough's model
   isn't asked.

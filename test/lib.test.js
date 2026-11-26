@@ -10,7 +10,7 @@ import { fromLocale, languageOf } from "../mods/walkthrough/lib/languages.js";
 import { cacheKey, codeKey, deadline, placeKey } from "../mods/walkthrough/lib/cache.js";
 import { worthReading } from "../mods/walkthrough/lib/sources.js";
 import { readOutcome, jobScript, isRunCommand, backendOf, modelsOf, modelOf, modelFor, MODELS, AUTO_MODEL, DEFAULT_BACKEND } from "../mods/walkthrough/lib/job.js";
-import { formatComments, addComment, sameSpot, formatQuestion } from "../mods/walkthrough/lib/comments.js";
+import { formatComments, addComment, sameSpot, formatQuestion, agentOrder } from "../mods/walkthrough/lib/comments.js";
 
 const PATCH = `diff --git a/src/a.js b/src/a.js
 index 1..2 100644
@@ -413,6 +413,17 @@ test("a question about a step: its place, text and files with their lines, then 
   const long = formatQuestion({ ...step, text: "x".repeat(5000) }, "a change", "is `retry()` safe?\nand ```this```?");
   assert.ok(long.endsWith("Question: is `retry()` safe?\nand ```this```?"));
   assert.ok(long.length < 2500);
+});
+
+test("a walkthrough offers its own tab's agents before a busier one elsewhere in the space", () => {
+  const agent = (address, tab, seq, space = "s1") => ({ address, tab, seq, space });
+  const all = [agent("t1", "A", 5), agent("t2", "B", 9), agent("t3", "A", 2), agent("t9", "Z", 99, "s2")];
+  // Opened as a pane, a copy has no terminal it came from: the Origin tab decides, not whichever agent changed last.
+  assert.deepEqual(agentOrder(all, { space: "s1", tab: "A", from: null }).map((a) => a.address), ["t1", "t3", "t2"]);
+  assert.deepEqual(agentOrder(all, { space: "s1", tab: "B", from: null }).map((a) => a.address), ["t2", "t1", "t3"]);
+  // The terminal it was opened over still comes first, even when it is quieter.
+  assert.deepEqual(agentOrder(all, { space: "s1", tab: "A", from: "t3" }).map((a) => a.address), ["t3", "t1", "t2"]);
+  assert.equal(agentOrder(all, { space: null, tab: null, from: null }).length, 4);
 });
 
 test("a hunk's header in words: where it starts, what was skipped, and the function it sits in", () => {

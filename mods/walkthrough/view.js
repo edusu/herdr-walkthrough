@@ -8,7 +8,7 @@ import { reportPages, blueprintFileTargets } from "./lib/navigation.js";
 import { mermaidWithConnections } from "./lib/diagram.js";
 import { blueprintView } from "./blueprint-view.js";
 import { div } from "gpui-kit";
-import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, VirtualListScrollHandle, TextView } from "gpui-base";
+import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, VirtualListScrollHandle, ScrollHandle, TextView } from "gpui-base";
 import { spaces, panes, focused, agents, theme, props, openOverlay, closeOverlay, hc, exec, nextCommand, settings, shared, setShared, watchFolder, notify, run } from "herdr";
 import * as herdr from "herdr";
 import { updater, VERSION, PROMPT, RELEASES } from "./lib/update.js";
@@ -20,18 +20,19 @@ import { tokenize } from "./lib/highlight.js";
 import { LANGUAGES, languageOf, fromLocale } from "./lib/languages.js";
 import { BACKENDS, DEFAULT_BACKEND, backendOf, modelsOf, modelFor, modelOf } from "./lib/job.js";
 import { estimateTokens, codeKey, placeKey, MAX_PROMPT_CHARS } from "./lib/cache.js";
-import { formatComments, formatQuestion, addComment, sameSpot } from "./lib/comments.js";
+import { formatComments, formatQuestion, addComment, sameSpot, agentOrder } from "./lib/comments.js";
 import { toMarkdown, recapMarkdown } from "./lib/export.js";
 import { recapStrings } from "./lib/recap-language.js";
 import { linkify, whereIs, isWebLink } from "./lib/links.js";
 import { FOLLOW_UPS, followUpsOf } from "./lib/followup.js";
 import { readKey, hunkRead, isRead, markStep, unmarkStep, mergeRead, changedSince } from "./lib/read.js";
 import { readDiff, readPreferences, matters, keyFor, findShown, preparePrompt, fits, promptChars, jobOf, startJob, alive, finished, cancelJob, finishJob, copyText, postComment, sendToNotion, notionSetup, settingsOf, askFollowUp, backendVersion, systemLocale, ensureDirs, loadRead, saveRead, transcriptMessages } from "./engine.js";
-import { button, chip, menu, picker, logo, kbd, tag, eyebrow, upper, meter, callout, pageFrame, PAGE_PADDING, formatElapsed, formatTokens } from "./ui.js";
+import { button, chip, menu, picker, logo, kbd, tag, eyebrow, upper, meter, callout, pageFrame, PAGE_PADDING, PAGE_BOTTOM, formatElapsed, formatTokens } from "./ui.js";
+import { stuckHeader } from "./lib/sticky.js";
 import { TEXT, px, grow, setSizes } from "./lib/scale.js";
 import { turnSource, isOpen, firstLine, newerTurn } from "./lib/turns.js";
 import { PLACEMENTS, placementOf } from "./lib/placement.js";
-import { AUTO, DEFAULT_AUTO, autoOf, startTurns, loadTurns, turnLabel, turnItems, chooseTurn, turnTick, autoGenerate, announce, hookHelp, startRecorder, stopRecorder } from "./turnview.js";
+import { AUTO, DEFAULT_AUTO, autoOf, startTurns, loadTurns, turnLabel, turnItems, chooseTurn, tabTerminals, turnTick, autoGenerate, announce, hookHelp, startRecorder, stopRecorder } from "./turnview.js";
 
 const PREFS = "walkthrough.prefs";
 // Lines drawn on one page; a step past this says how many it leaves out.
@@ -183,6 +184,9 @@ export class Walkthrough {
     this.picking = null; // "base" | "commit" | "since" | "pr" | "model" | "language" | "agent"
     this.menuIndex = 0; // the highlighted row of the open picker, moved by ↑ ↓ and chosen by Enter
     this.menuScroll = VirtualListScrollHandle.new();
+    this.pageScroll = ScrollHandle.new(); // a step page's position, for the file header pinned over its code
+    this.sizes = new Map(); // measured heights of code cards and their files, by element id
+    this.stuck = null; // the pinned file header (lib/sticky.js), or null
     this.sent = null;
     this.sentUrl = null; // a page the note opens when clicked
     this.seq = 0;
@@ -251,7 +255,7 @@ export class Walkthrough {
         else if (name === "unread") this.unreadOnly = !this.unreadOnly;
         else if (name === "wrap") this.wrap = !this.wrap;
         else if (name === "task") this.chooseTask("own", cx);
-        else if (name === "ask") this.openAsk();
+        else if (name === "ask") { if (this.inDialog || this.ownPane()?.focused) this.openAsk(); }
         // Only the focused copy asks: each one would pay for its own answer. Not awaited: it takes seconds, and other commands go on meanwhile.
         else if (FOLLOW_UPS.some((f) => f.key === name)) { if (this.inDialog || this.ownPane()?.focused) this.followUp(name, cx); }
         // Every copy hears a command: a pane or a tab moves only when it is the focused pane.
@@ -400,6 +404,8 @@ export class Walkthrough {
         // Another report is another reading path; persistent hunk marks survive it.
         if (before !== shown?.entry?.key + String(shown?.entry?.generatedAt)) {
           this.step = this.openingPage();
+          this.resetScroll();
+          this.sizes.clear();
           this.diagramZoom = 1;
           this.diagramSource = false;
           this.diagramSelected = null;
@@ -622,7 +628,7 @@ export class Walkthrough {
   }
 
   go(index) {
-    const pages = this.pages();
+    const pages = this.pages(), before = this.step;
     this.step = Math.max(0, Math.min(Math.max(0, pages.length - 1), index));
     const page = pages[this.step];
     if (page?.kind === "recap") this.visitedPages.add("recap");
@@ -631,6 +637,33 @@ export class Walkthrough {
     this.target = null;
     this.asking = false;
     this.navigationFile = null;
+    if (this.step !== before) this.resetScroll();
+  }
+
+  /**
+   * A page opens at its top: one handle on every page would carry the last one's position over. The old
+   * handle isn't released, since the frame on screen may still hold it until the next render.
+   */
+  resetScroll() {
+    this.pageScroll = ScrollHandle.new();
+    this.stuck = null;
+  }
+
+  /** Pins the header of the file at the top of the step's code (lib/sticky.js), redrawing only when that changes. */
+  followScroll(cx, again = true) {
+    const code = this.codeGroups, scroll = this.pageScroll;
+    if (!code?.card || !scroll) return;
+    // The code card is the page's last child: its first file starts below the card's top border.
+    const top = scroll.content_size().height - PAGE_BOTTOM - this.sizes.get(code.card) + 1;
+    const next = Number.isFinite(top) ? stuckHeader(scroll.offset().y, top, code.groups.map((g) => this.sizes.get(g.id)), grow(36)) : null;
+    if (next?.index !== this.stuck?.index || next?.shift !== this.stuck?.shift) { this.stuck = next; cx.notify(); }
+    // The offset may be read before this wheel event has moved it: look once more after it has.
+    if (again && !this.scrollAgain) this.scrollAgain = cx.timer.after(60, (cx) => { this.scrollAgain = null; this.followScroll(cx, false); });
+  }
+
+  /** Keeps an element's height for followScroll, in the px the scroll handle uses. */
+  measure(id) {
+    return (size) => this.sizes.set(id, size.height / (Number(settings().zoom) || 1));
   }
 
   blueprintTargets(path) {
@@ -868,11 +901,9 @@ export class Walkthrough {
     cx.spawn(async (cx) => this.reload(cx));
   }
 
-  /** The agents a comment can go to: the one it was opened over first, then this space's, most recent first. */
+  /** The agents a comment can go to (lib/comments.js: agentOrder). */
   agentChoices() {
-    const all = agents().filter((a) => !this.space || a.space === this.space.id).sort((a, b) => b.seq - a.seq);
-    const from = all.find((a) => a.address === this.from);
-    return from ? [from, ...all.filter((a) => a !== from)] : all;
+    return agentOrder(agents(), { space: this.space?.id ?? null, tab: this.tab, from: this.from });
   }
 
   /** Comments belong to the source they were made on; another scope or commit keeps its own. */
@@ -1501,7 +1532,7 @@ export class Walkthrough {
         button(t, "b-cancel", "Cancel", (_e, cx) => cx.spawn(async (cx) => this.cancel(cx)), { small: true })));
     }
     if (this.genError) out.push(bar("b-error", t.ansi1, "!", this.genError, null));
-    const newer = this.scope === "turn" ? newerTurn(this.turns, this.turn, this.turnPinned, this.from) : null;
+    const newer = this.scope === "turn" ? newerTurn(this.turns, this.turn, this.turnPinned, this.from, tabTerminals(this)) : null;
     if (newer) {
       out.push(bar("b-newer", t.accent, "↑", "There's a newer turn.",
         button(t, "b-newer-go", "Show", (_e, cx) => this.choose("turn", newer, cx), { small: true }), firstLine(newer.prompt, 80)));
@@ -1629,7 +1660,10 @@ export class Walkthrough {
     // A file both staged and unstaged is one path to link to.
     const paths = [...new Set(this.diff.files.map((f) => f.path))];
     const answers = followUpsOf(entry, s.id);
-    return pageFrame(`page-${s.id}-${entry.generatedAt}`)
+    const shown = { card: null, groups: [] }; // filled by code(), for followScroll
+    const frame = pageFrame(`page-${s.id}-${entry.generatedAt}`).track_scroll(this.pageScroll)
+      // No event says the page scrolled: the wheel says so, and the pointer while it drags the scrollbar.
+      .on_scroll_wheel((_e, cx) => this.followScroll(cx)).on_mouse_move((_e, cx) => this.followScroll(cx, false))
       .child(h_flex().gap(8).items_center()
         // The part title in the report's language, the rest in English: each upper-cased by its own rules.
         .child(eyebrow(t, `${upper(part.title, this.contractLanguage())}  ·  ${upper(`Step ${s.position} of ${total}`)}`).flex_1())
@@ -1669,7 +1703,12 @@ export class Walkthrough {
       .when(s.outdated, (e) => e.child(h_flex().gap(6).items_center().flex_wrap().text_size(TEXT.body)
         .child(div().font_semibold().text_color(t.blocked).child(s.found.length ? `${s.missing} of ${s.missing + s.found.length} hunks` : "Every hunk"))
         .child(div().text_color(t.muted).child(s.found.length ? "changed or gone · what's left is below" : "this step described changed or is gone · regenerate to read the code as it is now"))))
-      .when(s.found.length > 0, (e) => e.child(this.code(t, s.found)));
+      .when(s.found.length > 0, (e) => e.child(this.code(t, s.found, true, shown)));
+    this.codeGroups = shown;
+    const pinned = this.stuck && shown.groups[this.stuck.index];
+    return v_flex().flex_1().min_h(0).relative().child(frame)
+      .when(Boolean(pinned), (e) => e.child(this.fileHeader(t, pinned.file, pinned.sum, pinned.twice).id("pinned-header").shadow_xs()
+        .absolute().top(this.stuck.shift).left(PAGE_PADDING + 1).right(PAGE_PADDING + 1)));
   }
 
   /** Recap with a native, local diagram; source remains available on demand. */
@@ -1763,10 +1802,28 @@ export class Walkthrough {
       }));
   }
 
-  /** Hunks as code, consecutive ones of a file under one header. Click a line to comment on it. */
-  code(t, found, headers = true) {
+  /** A file's header over its code: path, status, totals, and a button that copies the path as shown. */
+  fileHeader(t, file, sum, twice, divided = false) {
+    return h_flex().when(divided, (e) => e.border_t(1).border_color(t.border)).h(grow(36)).px(12).gap(8).items_center().bg(t.raised).border_b(1).border_color(t.border)
+      .child(div().flex_none().text_size(TEXT.body).text_color(t.dim).child("▤"))
+      .child(div().flex_1().min_w(0).truncate().text_size(TEXT.ui).font_medium().when(file.path === this.navigationFile, (e) => e.text_color(t.accent)).child(file.path))
+      .when(twice || (file.scope === "staged" && this.scope === "uncommitted"), (e) => e.child(chip(t, scopeName(file.scope))))
+      .when(file.status !== "modified", (e) => e.child(div().text_size(TEXT.small).text_color(t.dim).child(file.oldPath ? `${file.status} from ${file.oldPath}` : file.status)))
+      .when(Boolean(sum?.added), (e) => e.child(chip(t, `+${sum.added}`, t.ansi2, t.ansi2 + "1f")))
+      .when(Boolean(sum?.deleted), (e) => e.child(chip(t, `−${sum.deleted}`, t.ansi1, t.ansi1 + "1f")))
+      .child(button(t, `copy-path-${file.scope}:${file.path}`, "Copy path", (_e, cx) => { cx.write_to_clipboard(file.path); this.flash(`Copied ${file.path}.`); cx.notify(); },
+        { kind: "ghost", small: true, tooltip: "Copy this file's repository-relative path" }));
+  }
+
+  /**
+   * Hunks as code, consecutive ones of a file under one header. Click a line to comment on it.
+   * `shown`: given, gets the card's and each file's element ids, for the pinned header.
+   */
+  code(t, found, headers = true, shown = null) {
     const font = settings().font_family ?? "JetBrains Mono";
-    const rows = [];
+    // One group of rows per file header (one in all without headers), each measured for the pinned header.
+    const groups = [];
+    let rows = [];
     let lines = 0, last = null, cut = 0;
     const twice = new Set();
     const scopes = new Map();
@@ -1783,16 +1840,11 @@ export class Walkthrough {
       if (lines >= MAX_PAGE_LINES) { cut += hunk.lines.length; continue; }
       const name = `${file.scope}:${file.path}`;
       const opened = headers && name !== last;
-      if (opened) {
-        const sum = totals.get(file.path);
-        rows.push(h_flex().when(rows.length > 0, (e) => e.border_t(1).border_color(t.border)).h(grow(36)).px(12).gap(8).items_center().bg(t.raised).border_b(1).border_color(t.border)
-          .child(div().flex_none().text_size(TEXT.body).text_color(t.dim).child("▤"))
-          .child(div().flex_1().min_w(0).truncate().text_size(TEXT.ui).font_medium().when(file.path === this.navigationFile, (e) => e.text_color(t.accent)).child(file.path))
-          .when(twice.has(file.path) || (file.scope === "staged" && this.scope === "uncommitted"), (e) => e.child(chip(t, scopeName(file.scope))))
-          .when(file.status !== "modified", (e) => e.child(div().text_size(TEXT.small).text_color(t.dim).child(file.oldPath ? `${file.status} from ${file.oldPath}` : file.status)))
-          .when(Boolean(sum?.added), (e) => e.child(chip(t, `+${sum.added}`, t.ansi2, t.ansi2 + "1f")))
-          .when(Boolean(sum?.deleted), (e) => e.child(chip(t, `−${sum.deleted}`, t.ansi1, t.ansi1 + "1f"))));
+      if (opened || !groups.length) {
+        rows = [];
+        groups.push({ id: `file-${hunk.id}`, file, sum: totals.get(file.path), twice: twice.has(file.path), rows });
       }
+      if (opened) rows.push(this.fileHeader(t, file, totals.get(file.path), twice.has(file.path), groups.length > 1));
       // Where the hunk is, in words, instead of git's @@ line: lines skipped since the last one of its file, its line, its function.
       const label = hunkLabel(hunk, name === last ? previous : null);
       last = name;
@@ -1815,12 +1867,15 @@ export class Walkthrough {
         if (this.target && sameSpot(this.target, spot)) rows.push(this.commentBox(t));
       }
     }
-    if (cut) rows.push(div().px(10).py(6).text_size(TEXT.note).text_color(t.dim).child(`${cut} more line${cut === 1 ? "" : "s"} not drawn here.`));
-    const box = v_flex().w_full().flex_none().rounded(10).border_1().border_color(t.border).bg(t.background).overflow_hidden();
-    if (this.wrap) return box.children(rows);
+    const blocks = groups.map((g) => v_flex().id(g.id).w_full().on_size_change(this.measure(g.id)).children(g.rows));
+    if (cut) blocks.push(div().px(10).py(6).text_size(TEXT.note).text_color(t.dim).child(`${cut} more line${cut === 1 ? "" : "s"} not drawn here.`));
+    const card = `card-${found[0]?.hunk.id ?? "none"}`;
+    if (shown) Object.assign(shown, { card, groups: groups.map(({ rows: _rows, ...g }) => g) });
+    const box = v_flex().id(card).w_full().flex_none().rounded(10).border_1().border_color(t.border).bg(t.background).overflow_hidden().on_size_change(this.measure(card));
+    if (this.wrap) return box.children(blocks);
     // One sideways scroll for the whole hunk list, so line numbers and code stay aligned; the column is as wide as its longest line.
     return box.child(h_flex().id(`code-${found[0]?.hunk.id ?? "none"}`).w_full().overflow_x_scrollbar()
-      .child(v_flex().flex_none().min_w_full().children(rows)));
+      .child(v_flex().flex_none().min_w_full().children(blocks)));
   }
 
   line(t, file, { kind, number, text }, font, numbers = 44) {

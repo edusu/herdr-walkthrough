@@ -20,7 +20,7 @@ export class Element {
 export const div=()=>new Element(), h_flex=div, v_flex=div, v_virtual_list=div;
 export const Scrollbar={vertical:div}, Input={new:div}, Textarea={new:div};
 export const InputState={new:()=>({on(){},value(){return '';},set_value(){},focus(){}})}, TextareaState=InputState;
-export const VirtualListScrollHandle={new:()=>({})}, TextView={markdown:(id,text)=>div().id(id).child(text)};
+export const VirtualListScrollHandle={new:()=>({})}, ScrollHandle=VirtualListScrollHandle, TextView={markdown:(id,text)=>div().id(id).child(text)};
 const path=()=>new Proxy({},{get:()=>()=>path()});export const PathBuilder={stroke:path,fill:path};
 export const Background={solid:(c)=>c,stop:(c)=>c,linear_gradient:(a,b)=>b,pattern_slash:(c)=>c,checkerboard:(c)=>c};
 export const spaces=()=>[],panes=()=>[],agents=()=>[],focused=()=>null,props=()=>({}),settings=()=>({});
@@ -232,4 +232,11 @@ test("Claude's version is asked for with no await before it, so a moved copy's c
   const asked = backendVersion('claude');
   assert.deepEqual(execCalls, [['claude', ['--version']]]);
   assert.equal(await asked, null);
+});
+
+test("a file's header copies the path it shows", () => {
+  const p=panel(),copied=[];p.go(3);
+  const button=find(p.reportPage(colors),'copy-path-working:schema.sql');assert.ok(button,'Missing the copy button');
+  button.handlers.on_click({},{...cx,write_to_clipboard:(s)=>copied.push(s)});
+  assert.deepEqual(copied,['schema.sql']);assert.equal(p.sent,'Copied schema.sql.');
 });

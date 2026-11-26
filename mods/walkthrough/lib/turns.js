@@ -132,20 +132,20 @@ export const autoWritable = (t) => Boolean(t) && !isOpen(t) && !t.frozen;
  * no longer counts as picked).
  * @returns {{ turn: any, pinned: boolean }}
  */
-export function keepTurn(turns, shown, pinned, terminal = null) {
+export function keepTurn(turns, shown, pinned, terminal = null, near = []) {
   const kept = shown ? turns.find((t) => t.id === shown.id) : null;
-  return kept ? { turn: kept, pinned } : { turn: pickTurn(turns, terminal), pinned: false };
+  return kept ? { turn: kept, pinned } : { turn: pickTurn(turns, terminal, near), pinned: false };
 }
 
 /** The turn pickTurn would show instead of the shown one, when it started later and the shown one wasn't picked by hand. */
-export function newerTurn(turns, shown, pinned, terminal = null) {
-  const pick = pickTurn(turns, terminal);
+export function newerTurn(turns, shown, pinned, terminal = null, near = []) {
+  const pick = pickTurn(turns, terminal, near);
   return !pinned && pick && pick.id !== shown?.id && !(pick.started <= shown?.started) ? pick : null;
 }
 
-/** The turn to show first: the newest of the terminal it was opened over, else the newest. */
-export function pickTurn(turns, terminal = null) {
-  return (terminal && turns.find((t) => t.terminal === terminal)) || turns[0] || null;
+/** The turn to show first: the newest of the terminal it was opened over, else of the `near` terminals (its Origin tab's), else the newest. */
+export function pickTurn(turns, terminal = null, near = []) {
+  return (terminal && turns.find((t) => t.terminal === terminal)) || turns.find((t) => near.includes(t.terminal)) || turns[0] || null;
 }
 
 /** The newest finished turn, of these terminals when given; null when the newest is still open. */
