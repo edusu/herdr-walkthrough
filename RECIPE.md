@@ -84,13 +84,17 @@ A dialog 74% of the window wide and 80% tall (`modal`), on `theme().popover`; as
      ghost "«" button that hides the contents column ("»" shows it again); the choice is
      kept in the `walkthrough.prefs` shared value as `sidebar`.
    - scope tabs in a `raised` pill (radius 9, padding 3): Uncommitted, Staged, Unstaged,
-     Branch, Commit, Pull request, Last turn; 24px tall, 12px; the chosen one on `popover`,
+     Branch, Commit, Range, Pull request, Last turn; 24px tall, 12px; the chosen one on `popover`,
      semibold, with a small shadow, the rest `muted`. Each has a tooltip saying what it reads.
    - after the tabs: Branch has "vs" (11px `dim`) and a dropdown of the base; Commit a
      dropdown of the commit (`short subject`), then "from" and a dropdown of where it starts:
      "its parent" (the default, hint "The picked commit alone") and the commits listed after
      the picked one, which make it a range; picking a commit the "from" isn't older than puts
-     "from" back to its parent; Pull request, once some are listed, a
+     "from" back to its parent; Range has "from" and a dropdown of its first commit (the last
+     one and those listed after it; "Pick the first commit" until one is), then "to" and the
+     dropdown of its last commit: both are part of it, read as `git diff <first's parent> <last>`
+     (the empty tree for a root commit), and a last commit the first isn't at or older than
+     clears the first; Pull request, once some are listed, a
      dropdown of the open pull requests (`#12 title`, hint "author · head → base",
      "· draft", "· this branch"); Last turn, once a turn is recorded, a dropdown
      of the turns (the prompt's first line, hint "5 min ago · took 1:20 · t3", "still
@@ -477,21 +481,22 @@ The contract other mods code against; keep these names. `props()` may hold, besi
 
 - `folder` and `scope` (a key of `SCOPES`), as above.
 - `commit`: with `scope: "commit"`, the commit shown. `since`: with `commit`, the range's
-  "from" (not called `from`: that prop is the terminal it was opened over).
+  "from" (not called `from`: that prop is the terminal it was opened over). `first`: with
+  `scope: "range"` and `commit` (the last commit), the range's first commit, included.
 - `pr`: with `scope: "pr"`, a positive integer, picked once the list is read; when it isn't
   open, nothing is picked and the empty state says "#N isn't among the open pull requests."
 - `path`: repository-relative. The first time a walkthrough is shown, the first step with a
   hunk in that file is opened instead of the first unread one; none: a note "No step touches
   <path>."
 
-`lib/sources.js: openRequest` checks them first: `commit` and `since` must be 7 to 64 hex
+`lib/sources.js: openRequest` checks them first: `commit`, `since` and `first` must be 7 to 64 hex
 characters (nothing that git could read as an option), `pr` a positive integer, `path` free
 of a leading `/` and of `..` segments; anything else is null and ignored. A hash is read
 with `recentCommits`' `git log -n1 … <hash>^{commit} --`, which fails for one git doesn't know
 (`commitAt`); commit and `since` are looked up together, and one not among the 40 listed is
 added after them. A hash git doesn't know leaves the tab as it
 would have opened, with the note "Couldn't find commit <hash>."; a `since` that isn't an
-ancestor is refused by the range read. Moving to another Placement passes `commit`, `since`, `pr`, `turn` and `step`
+ancestor is refused by the range read. Moving to another Placement passes `commit`, `since`, `first`, `pr`, `turn` and `step`
 on, so the copy shows the same commit, range, pull request or turn, on the same page (from Recap or a contract page, which `step` can't name, the copy opens where a walkthrough usually does).
 - `turn`: with `scope: "turn"`, a turn's folder name; shown while it is listed, counted as
   picked by hand unless it is the one that would be shown anyway.
@@ -758,6 +763,8 @@ without copying again). It prints nothing and always exits 0.
 - Commit on the root commit shows every file as added.
 - Commit, then an older "from": the range's files, "◎ N commit messages", Generate works;
   "its parent" again shows the single commit's cached walkthrough.
+- Range, with "from" three commits back and "to" the latest: the files of those four commits,
+  the first one's included; "from" and "to" on the same commit show that commit alone.
 - Clicking a line, typing and Enter adds a comment under it; Send pastes it into the
   chosen agent.
 - `d` on a step: a DEEPER box appears under the explanation within seconds, the button turns

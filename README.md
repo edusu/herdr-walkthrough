@@ -87,6 +87,7 @@ Last turn and task mapping work across the additional pages.
 | **Staged** / **Unstaged** | One half of it |
 | **Branch** | Your branch against its base, without what the base gained since |
 | **Commit** | One commit, or, with **from** set to an older commit, every commit after that one up to the picked one |
+| **Range** | Every commit **from** one **to** another, both included |
 | **Pull request** | An open pull request on GitHub, as GitHub shows it (your branch's is picked for you) |
 | **Last turn** | Only what an agent changed while answering one prompt: not your edits before it, not the ones after |
 
@@ -199,9 +200,10 @@ as it would have.
 | Prop | What it does |
 | --- | --- |
 | `folder` | The repository to read (any folder in it); else the focused terminal's |
-| `scope` | The tab: `uncommitted`, `staged`, `unstaged`, `branch`, `commit`, `pr` or `turn` |
+| `scope` | The tab: `uncommitted`, `staged`, `unstaged`, `branch`, `commit`, `range`, `pr` or `turn` |
 | `commit` | With `scope: "commit"`, the commit shown: 7 to 64 hex characters, any commit git knows, not only the latest 40 |
 | `since` | With `commit`, its **from**: everything after it up to `commit`. It must be an ancestor of `commit` |
+| `first` | With `scope: "range"` and `commit` (its last commit), the range's first commit, itself included. `commit` must descend from it |
 | `pr` | With `scope: "pr"`, the pull request's number. One that isn't open says so instead of picking another |
 | `path` | A path inside the repository, as git prints it: the walkthrough opens on the first step touching that file, once |
 | `step` | The page to open the first walkthrough shown on: a step's index from 0, -1 for the task page |
@@ -400,8 +402,8 @@ If the mod was renamed when it was added (a name clash), replace the renamed fol
 - **Last turn** records Claude Code's turns with its hooks, and pi's, codex's and
   opencode's only while a walkthrough is open with recording on. It writes walkthroughs
   without a click only while the walkthrough is open.
-- **Commit** and its **from** offer the latest 40 commits on HEAD; an older one can't be picked
-  by hand, only opened from another mod (`commit`, `since`).
+- **Commit** and its **from**, and **Range**, offer the latest 40 commits on HEAD; an older one can't be picked
+  by hand, only opened from another mod (`commit`, `since`, `first`).
 - **Comments** are kept while the walkthrough is open, and sent with Enter.
 - **Read marks** are saved once a second: one made in the last second before Herdr quits
   can be lost. A step counts as changed since you read it when part of it was read, or when

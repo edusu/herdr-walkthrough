@@ -12,7 +12,7 @@ import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, VirtualList
 import { spaces, panes, focused, agents, theme, props, openOverlay, closeOverlay, hc, exec, nextCommand, settings, shared, setShared, watchFolder, notify, run } from "herdr";
 import * as herdr from "herdr";
 import { updater, VERSION, PROMPT, RELEASES } from "./lib/update.js";
-import { SCOPES, repoAt, currentHead, defaultBase, baseChoices, recentCommits, olderCommits, commitAt, openRequest, pullRequests, issuesFor, sourceKey, commitMessage, rangeMessages, taskSince } from "./lib/sources.js";
+import { SCOPES, repoAt, currentHead, defaultBase, baseChoices, recentCommits, olderCommits, rangeFrom, commitAt, openRequest, pullRequests, issuesFor, sourceKey, commitMessage, rangeMessages, taskSince } from "./lib/sources.js";
 import { overlay, fileTotals, overlayAsks, asksOf } from "./lib/walkthrough.js";
 import { TASK_MODES, taskChoice, resolveTask, taskKey, taskCacheKey, clip, MAX_TASK_CHARS } from "./lib/task.js";
 import { numberLines, hunkLabel, numberDigits } from "./lib/hunks.js";
@@ -124,6 +124,7 @@ export class Walkthrough {
     this.commit = null;
     this.commits = [];
     this.since = null; // the Commit tab's "from": a commit of this.commits older than this.commit, or null for its parent
+    this.first = null; // the Range tab's first commit: this.commit or one older, itself part of the range
     this.pr = null;
     this.prs = null; // null until listed
     this.prError = null;
@@ -181,7 +182,7 @@ export class Walkthrough {
     this.comments = [];
     this.target = null; // { sk, scope, path, line, kind, code }: the line a comment is being written on
     this.agentTo = null;
-    this.picking = null; // "base" | "commit" | "since" | "pr" | "model" | "language" | "agent"
+    this.picking = null; // "base" | "commit" | "since" | "first" | "pr" | "model" | "language" | "agent"
     this.menuIndex = 0; // the highlighted row of the open picker, moved by ↑ ↓ and chosen by Enter
     this.menuScroll = VirtualListScrollHandle.new();
     this.pageScroll = ScrollHandle.new(); // a step page's position, for the file header pinned over its code
@@ -227,7 +228,7 @@ export class Walkthrough {
       this.bases = bases;
       this.commits = commits;
       this.commit = commits[0] ?? null;
-      if (this.scope === "commit" && this.want.commit) await this.openCommit();
+      if ((this.scope === "commit" || this.scope === "range") && this.want.commit) await this.openCommit();
       if (this.scope === "pr") await this.loadPullRequests(); else this.want.pr = null;
       await startTurns(this, cx);
       if (this.want.turn && this.turn?.id === this.want.turn) chooseTurn(this, this.turn);
@@ -269,6 +270,7 @@ export class Walkthrough {
   source() {
     if (this.scope === "branch") return this.base ? { kind: "branch", base: this.base, head: this.head ?? this.repo?.branch ?? "HEAD" } : null;
     if (this.scope === "commit" && this.commit && this.since) return { kind: "range", from: this.since.hash, to: this.commit.hash, fromSubject: this.since.subject, toSubject: this.commit.subject };
+    if (this.scope === "range") return this.commit && this.first ? { kind: "range", from: rangeFrom(this.first), to: this.commit.hash, fromSubject: this.first.subject, toSubject: this.commit.subject } : null;
     if (this.scope === "commit") return this.commit ? { kind: "commit", hash: this.commit.hash, subject: this.commit.subject } : null;
     if (this.scope === "pr") return this.pr ? { kind: "pr", number: this.pr.number, title: this.pr.title, head: this.pr.head, base: this.pr.base } : null;
     if (this.scope === "turn") return this.turn ? turnSource(this.turn) : null;
@@ -456,7 +458,7 @@ export class Walkthrough {
       for (;;) {
         const changed = await watchFolder(folder);
         // A commit, a pull request or a finished turn doesn't change with the working tree.
-        const wanted = this.scope !== "commit" && this.scope !== "pr" && !(this.scope === "turn" && !(this.turn && isOpen(this.turn))) && !this.dirty;
+        const wanted = this.scope !== "commit" && this.scope !== "range" && this.scope !== "pr" && !(this.scope === "turn" && !(this.turn && isOpen(this.turn))) && !this.dirty;
         // The recorder ends a turn once the working tree has been still a while, whatever is shown.
         if ((wanted || this.record) && await matters(top, changed, gitDir)) {
           this.treeChangedAt = Date.now();
@@ -797,16 +799,18 @@ export class Walkthrough {
    * isn't an ancestor is refused by the read.
    */
   async openCommit() {
-    const { commit: hash, since: from } = this.want;
-    const [commit, since] = await Promise.all([commitAt(exec, this.repo.top, hash), from ? commitAt(exec, this.repo.top, from) : null]);
+    const { commit: hash, since: from, first: start } = this.want;
+    const [commit, since, first] = await Promise.all([hash, from, start].map((h) => (h ? commitAt(exec, this.repo.top, h) : null)));
     const listed = (c) => this.commits.find((x) => x.hash === c.hash) ?? (this.commits.push(c), c);
     if (!commit) this.flash(`Couldn't find commit ${hash}.`);
     else {
       this.commit = listed(commit);
-      if (from && !since) this.flash(`Couldn't find commit ${from}.`);
+      const missing = from && !since ? from : start && !first ? start : null;
+      if (missing) this.flash(`Couldn't find commit ${missing}.`);
       if (since) this.since = listed(since);
+      if (first) this.first = listed(first);
     }
-    this.want.commit = this.want.since = null;
+    this.want.commit = this.want.since = this.want.first = null;
   }
 
   /** The open pull requests; the one picked stays picked, else the current branch's is. */
@@ -893,8 +897,14 @@ export class Walkthrough {
     if (kind === "language") { this.language = value; savePrefs({ language: value }); }
     if (kind === "base") { this.base = value; savePrefs({ bases: { ...(prefs().bases ?? {}), [this.repo.top]: value } }); }
     // A "from" that is no longer older than the picked commit would make no range: back to its parent.
-    if (kind === "commit") { this.commit = value; if (this.since && !olderCommits(this.commits, value).some((c) => c.hash === this.since.hash)) this.since = null; }
+    if (kind === "commit") {
+      const older = olderCommits(this.commits, value);
+      this.commit = value;
+      if (this.since && !older.some((c) => c.hash === this.since.hash)) this.since = null;
+      if (this.first && this.first.hash !== value.hash && !older.some((c) => c.hash === this.first.hash)) this.first = null;
+    }
     if (kind === "since") this.since = value;
+    if (kind === "first") this.first = value;
     if (kind === "pr") { this.pr = value; if (this.confirm === "post") this.confirm = null; }
     if (kind === "turn") chooseTurn(this, value);
     if (kind === "agent") { this.agentTo = value; cx.notify(); return; }
@@ -1192,7 +1202,7 @@ export class Walkthrough {
     const here = placementOf({ overlay: this.own.overlay, pane: mine?.pane }, all, this.tab);
     // Without its own pane it couldn't close itself: two would stay open.
     if (where === here || (here !== "dialog" && !mine)) return;
-    const p = { folder: this.folder, scope: this.scope, tab: this.tab, from: this.from, commit: this.commit?.hash, since: this.since?.hash, pr: this.pr?.number,
+    const p = { folder: this.folder, scope: this.scope, tab: this.tab, from: this.from, commit: this.commit?.hash, since: this.since?.hash, first: this.first?.hash, pr: this.pr?.number,
       ...(this.scope === "turn" && this.turn ? { turn: this.turn.id } : {}), ...this.stepProp() };
     const origin = spaces().some((s) => s.tabs.some((x) => x.id === this.tab)) && this.tab !== mine?.tab ? this.tab : null;
     if (where === "tab") run("tab.new", { name: "Walkthrough", space: this.space?.id, mod: "walkthrough", props: p });
@@ -1251,6 +1261,8 @@ export class Walkthrough {
       .when(this.scope === "branch", (el) => el.child(label("vs")).child(picker(t, "pick-base", this.base ?? "Pick a base", open("base"))))
       .when(this.scope === "commit", (el) => el.child(picker(t, "pick-commit", this.commit ? `${this.commit.short} ${this.commit.subject}` : "Pick a commit", open("commit"))))
       .when(this.scope === "commit" && Boolean(this.commit), (el) => el.child(label("from")).child(picker(t, "pick-since", this.since ? `${this.since.short} ${this.since.subject}` : "its parent", open("since"))))
+      .when(this.scope === "range", (el) => el.child(label("from")).child(picker(t, "pick-first", this.first ? `${this.first.short} ${this.first.subject}` : "Pick the first commit", open("first")))
+        .child(label("to")).child(picker(t, "pick-commit", this.commit ? `${this.commit.short} ${this.commit.subject}` : "Pick the last commit", open("commit"))))
       .when(this.scope === "pr" && Boolean(this.prs?.length), (el) => el.child(picker(t, "pick-pr", this.pr ? `#${this.pr.number} ${this.pr.title}` : "Pick a pull request", open("pr"))))
       .when(this.scope === "turn" && this.turns.length > 0, (el) => el.child(picker(t, "pick-turn", turnLabel(this), open("turn")))
         .child(button(t, "toggle-auto", auto ? "⚡ Auto" : "Auto: off", (_e, cx) => { this.choose("auto", auto ? "off" : "on-open", cx); }, {
@@ -1295,6 +1307,7 @@ export class Walkthrough {
       case "commit": return { side: "left", width: 460, items: this.commits.map((c) => commitRow(c, c.hash === this.commit?.hash)) };
       case "since": return { side: "left", width: 460, items: [{ label: "its parent", hint: "The picked commit alone", value: null, selected: !this.since },
         ...olderCommits(this.commits, this.commit).map((c) => commitRow(c, c.hash === this.since?.hash))] };
+      case "first": return { side: "left", width: 460, items: (this.commit ? [this.commit, ...olderCommits(this.commits, this.commit)] : []).map((c) => commitRow(c, c.hash === this.first?.hash)) };
       case "pr": return { side: "left", width: 480, items: (this.prs ?? []).map((p) => ({
         label: `#${p.number}  ${p.title}`, hint: `${p.author} · ${p.head} → ${p.base}${p.draft ? " · draft" : ""}${p.current ? " · this branch" : ""}`, value: p, selected: p.number === this.pr?.number })) };
       case "turn": return { side: "left", width: 480, items: turnItems(this) };
@@ -1373,7 +1386,7 @@ export class Walkthrough {
     if (this.scope === "pr" && this.prs === null) return center("Reading the pull requests…");
     if (this.scope === "pr" && !this.prs.length) return center("No open pull requests", "This repository has none open on GitHub.", { icon: "#", actions: [goTo("branch", "Branch"), goTo("uncommitted", "Uncommitted")] });
     if (this.scope === "turn" && !this.turns.length) return hookHelp(this, t);
-    if (!this.source()) return center(this.scope === "branch" ? "Pick the branch to compare with" : this.scope === "pr" ? "Pick a pull request" : "Pick a commit", this.scope === "pr" && this.prMissing ? `#${this.prMissing} isn't among the open pull requests.` : "Nothing is read or generated until you do.", { icon: "◇" });
+    if (!this.source()) return center(this.scope === "branch" ? "Pick the branch to compare with" : this.scope === "pr" ? "Pick a pull request" : this.scope === "range" ? "Pick the first commit" : "Pick a commit", this.scope === "pr" && this.prMissing ? `#${this.prMissing} isn't among the open pull requests.` : "Nothing is read or generated until you do.", { icon: "◇" });
     if (!this.diff) return center("Reading the diff…");
     if (!this.diff.files.length) {
       if (this.scope === "turn") {

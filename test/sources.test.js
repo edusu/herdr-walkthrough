@@ -6,7 +6,7 @@ import { execFile } from "node:child_process";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { repoAt, currentHead, loadSections, defaultBase, baseChoices, recentCommits, sourceKey, describe, MAX_UNTRACKED_BYTES, pullRequests, issuesFor, ghError, turnsKey, rangeMessages, rangeCount, olderCommits, openRequest, commitAt } from "../mods/walkthrough/lib/sources.js";
+import { repoAt, currentHead, loadSections, defaultBase, baseChoices, recentCommits, sourceKey, describe, MAX_UNTRACKED_BYTES, pullRequests, issuesFor, ghError, turnsKey, rangeMessages, rangeCount, rangeFrom, olderCommits, openRequest, commitAt } from "../mods/walkthrough/lib/sources.js";
 import { buildDigest } from "../mods/walkthrough/lib/digest.js";
 import { jobScript, readOutcome } from "../mods/walkthrough/lib/job.js";
 import { chmodSync, readFileSync, existsSync, utimesSync } from "node:fs";
@@ -135,6 +135,13 @@ test("a range: the commits after from up to to, refused when from is not an ance
   assert.deepEqual(await rangeMessages(exec, repo, one, three), ["Two\n\nWith a body.", "Side", "Three"]);
   // Two, Side, the merge and Three: counted by git, not by place in a list.
   assert.equal(await rangeCount(exec, repo, one, three), 4);
+  // A Range holds its first commit too: read from that commit's parent, or from nothing at the root.
+  const listed = await recentCommits(exec, repo);
+  const root = rangeFrom(listed.at(-1));
+  assert.equal(rangeFrom(listed[0]), listed[1].hash);
+  assert.equal(buildDigest((await loadSections(exec, repo, { kind: "range", from: root, to: three })).sections).files.length, 4);
+  assert.equal(await rangeCount(exec, repo, root, three), 5);
+  assert.deepEqual((await rangeMessages(exec, repo, root, one)), ["One"]);
   rmSync(repo, { recursive: true, force: true });
 });
 
@@ -147,13 +154,13 @@ test('the "from" picker offers the commits older than the picked one', () => {
 });
 
 test("another mod's props: what can't be trusted is dropped", () => {
-  assert.deepEqual(openRequest({ folder: "/r", scope: "commit", commit: "ABCDEF1", since: "0123456789abcdef0123456789abcdef01234567", pr: 12, path: "src/a b.js", step: 3, turn: "1732100000-a1b2" }),
-    { scope: "commit", commit: "ABCDEF1", since: "0123456789abcdef0123456789abcdef01234567", pr: 12, path: "src/a b.js", step: 3, turn: "1732100000-a1b2" });
+  assert.deepEqual(openRequest({ folder: "/r", scope: "commit", commit: "ABCDEF1", since: "0123456789abcdef0123456789abcdef01234567", first: "abcdef12", pr: 12, path: "src/a b.js", step: 3, turn: "1732100000-a1b2" }),
+    { scope: "commit", commit: "ABCDEF1", since: "0123456789abcdef0123456789abcdef01234567", first: "abcdef12", pr: 12, path: "src/a b.js", step: 3, turn: "1732100000-a1b2" });
   // -1 is the task page.
   assert.equal(openRequest({ step: -1 }).step, -1);
-  const none = { scope: null, commit: null, since: null, pr: null, path: null, step: null, turn: null };
+  const none = { scope: null, commit: null, since: null, first: null, pr: null, path: null, step: null, turn: null };
   assert.deepEqual(openRequest(undefined), none);
-  assert.deepEqual(openRequest({ scope: "all", commit: "--output=/tmp/x", since: "abc12", pr: -3, path: "/etc/passwd", step: -2, turn: "../x" }), none);
+  assert.deepEqual(openRequest({ scope: "all", commit: "--output=/tmp/x", since: "abc12", first: "HEAD", pr: -3, path: "/etc/passwd", step: -2, turn: "../x" }), none);
   assert.deepEqual(openRequest({ commit: "HEAD~1", since: "abcdefg", pr: "12", path: "a/../../b", step: "1" }), none);
   assert.deepEqual(openRequest({ commit: "a".repeat(65), pr: 1.5, path: "", step: 0.5 }), none);
 });

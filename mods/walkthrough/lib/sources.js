@@ -13,7 +13,7 @@ import { cleanCommitMessage, issueNumber, MAX_MESSAGES } from "./task.js";
 const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "core.quotePath=false", "-c", "diff.autoRefreshIndex=false"];
 // The user's diff settings (no prefixes, external tools, color) must not change what is parsed.
 const DIFF = ["--no-color", "--no-ext-diff", "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/", "-M"];
-const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+export const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 // Untracked files are read one by one; past these, the rest are listed unread.
 const MAX_UNTRACKED = 300;
 export const MAX_UNTRACKED_BYTES = 1024 * 1024;
@@ -24,6 +24,7 @@ export const SCOPES = [
   { key: "unstaged", label: "Unstaged", about: "The working tree and new files, not staged" },
   { key: "branch", label: "Branch", about: "Everything this branch adds to its base, committed or not" },
   { key: "commit", label: "Commit", about: "One commit, against its first parent" },
+  { key: "range", label: "Range", about: "Every commit from one to another, both included" },
   { key: "pr", label: "Pull request", about: "An open pull request on GitHub, as GitHub shows its changes (needs gh)" },
   { key: "turn", label: "Last turn", about: "What an agent changed while answering one prompt (needs the turn hooks, or recording on for agents without them)" },
 ];
@@ -269,7 +270,8 @@ export async function loadSections(exec, top, source) {
       break;
     }
     case "range": {
-      const ancestor = await git(exec, top, ["merge-base", "--is-ancestor", source.from, source.to]);
+      // From the empty tree (a range that starts at the root commit) there is no commit to check.
+      const ancestor = source.from === EMPTY_TREE ? { ok: true } : await git(exec, top, ["merge-base", "--is-ancestor", source.from, source.to]);
       if (ancestor.code === 1) throw new Error("The \"from\" commit is not an ancestor of the commit picked, so there is no range between them.");
       if (!ancestor.ok) throw new Error(ancestor.err || "git merge-base failed");
       add("range", await must(exec, top, ["diff", ...DIFF, source.from, source.to]));
@@ -332,13 +334,13 @@ export async function baseChoices(exec, top, current) {
   return r.out.split("\n").map((s) => s.trim()).filter((s) => s && s !== current && !s.endsWith("/HEAD") && s !== "origin");
 }
 
-/** The latest commits on HEAD (or on `rev`): { hash, short, subject, author, when }. */
+/** The latest commits on HEAD (or on `rev`): { hash, short, subject, author, when, parent }; parent is the first one, null for a root commit. */
 export async function recentCommits(exec, top, count = 40, rev = null) {
-  const r = await git(exec, top, ["log", `-n${count}`, "--format=%H%x1f%h%x1f%s%x1f%an%x1f%cr", ...(rev ? [rev, "--"] : [])]);
+  const r = await git(exec, top, ["log", `-n${count}`, "--format=%H%x1f%h%x1f%s%x1f%an%x1f%cr%x1f%P", ...(rev ? [rev, "--"] : [])]);
   if (!r.ok) return [];
   return r.out.split("\n").filter(Boolean).map((line) => {
-    const [hash, short, subject, author, when] = line.split("\x1f");
-    return { hash, short, subject, author, when };
+    const [hash, short, subject, author, when, parents] = line.split("\x1f");
+    return { hash, short, subject, author, when, parent: parents.split(" ")[0] || null };
   });
 }
 
@@ -347,9 +349,12 @@ export async function commitAt(exec, top, hash) {
   return (await recentCommits(exec, top, 1, `${hash}^{commit}`))[0] ?? null;
 }
 
+// A range from the empty tree starts at the root commit: every commit up to `to`.
+const span = (from, to) => (from === EMPTY_TREE ? to : `${from}..${to}`);
+
 /** How many commits a range holds: those after `from` up to `to`, merges and their side branches included. */
 export async function rangeCount(exec, top, from, to) {
-  return Number((await must(exec, top, ["rev-list", "--count", `${from}..${to}`])).trim());
+  return Number((await must(exec, top, ["rev-list", "--count", span(from, to)])).trim());
 }
 
 /**
@@ -361,9 +366,12 @@ export function openRequest(props) {
   const p = props ?? {};
   const hash = (h) => (typeof h === "string" && /^[0-9a-f]{7,64}$/i.test(h) ? h : null);
   const path = typeof p.path === "string" && p.path && !p.path.startsWith("/") && !p.path.split("/").includes("..") ? p.path : null;
-  return { scope: SCOPES.some((s) => s.key === p.scope) ? p.scope : null, commit: hash(p.commit), since: hash(p.since), pr: Number.isInteger(p.pr) && p.pr > 0 ? p.pr : null, path, step: Number.isInteger(p.step) && p.step >= -1 ? p.step : null,
+  return { scope: SCOPES.some((s) => s.key === p.scope) ? p.scope : null, commit: hash(p.commit), since: hash(p.since), first: hash(p.first), pr: Number.isInteger(p.pr) && p.pr > 0 ? p.pr : null, path, step: Number.isInteger(p.step) && p.step >= -1 ? p.step : null,
     turn: typeof p.turn === "string" && /^[\w.-]{1,128}$/.test(p.turn) && !p.turn.startsWith(".") ? p.turn : null };
 }
+
+/** Where a Range starts for git: its first commit's parent, since the first commit is part of it. */
+export const rangeFrom = (first) => first.parent ?? EMPTY_TREE;
 
 /** The commits listed after the picked one: older on HEAD, so a range can start at any of them. */
 export function olderCommits(commits, commit) {
@@ -445,7 +453,7 @@ export async function commitMessage(exec, top, hash) {
  * subject leaves nothing, and drops out. Null when git couldn't read them.
  */
 export async function rangeMessages(exec, top, from, to) {
-  const r = await git(exec, top, ["log", "-z", "--topo-order", "--reverse", `-n${MAX_MESSAGES}`, "--format=%B", `${from}..${to}`, "--"]);
+  const r = await git(exec, top, ["log", "-z", "--topo-order", "--reverse", `-n${MAX_MESSAGES}`, "--format=%B", span(from, to), "--"]);
   return r.ok ? r.out.split("\0").map(cleanCommitMessage).filter(Boolean) : null;
 }
 
