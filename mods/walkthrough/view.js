@@ -1157,6 +1157,9 @@ export class Walkthrough {
       : button(t, "generate", this.shown?.exact ? "Regenerate" : "✦ Generate", (_e, cx) => cx.spawn(async (cx) => this.generate(cx)),
         { kind: this.shown?.exact ? "outline" : "solid", small: true, disabled: !this.canGenerate(), tooltip: this.cli === null ? `${backendOf(this.backend).program} isn't installed` : null });
     return h_flex().h(grow(48)).flex_none().px(14).gap(10).items_center().border_b(1).border_color(t.border)
+      .when(Boolean(this.view) && this.wide(), (el) => el.child(button(t, "toggle-sidebar", this.sidebar ? "«" : "»",
+        (_e, cx) => { this.sidebar = !this.sidebar; savePrefs({ sidebar: this.sidebar }); cx.notify(); },
+        { kind: "ghost", small: true, tooltip: this.sidebar ? "Hide the contents" : "Show the contents" })))
       .child(logo(t, px(22)))
       .child(div().flex_none().font_semibold().text_size(TEXT.heading).child("Walkthrough"))
       .when(Boolean(r || this.folder), (el) => el.child(h_flex().min_w(0).flex_shrink(1).h(grow(22)).px(8).gap(6).items_center().rounded_full().bg(t.raised).text_size(TEXT.note).text_color(t.muted)
@@ -1258,9 +1261,6 @@ export class Walkthrough {
     const auto = this.auto !== "off";
     const narrow = (this.width ?? 1000) < grow(1100); // the row's text grows with font_size, so its breakpoint does too
     const which = h_flex().min_w(0).gap(8).items_center().flex_wrap()
-      .when(Boolean(this.view) && this.wide(), (el) => el.child(button(t, "toggle-sidebar", this.sidebar ? "«" : "»",
-        (_e, cx) => { this.sidebar = !this.sidebar; savePrefs({ sidebar: this.sidebar }); cx.notify(); },
-        { kind: "ghost", small: true, tooltip: this.sidebar ? "Hide the contents" : "Show the contents" })))
       .child(tabs)
       .when(this.scope === "branch", (el) => el.child(label("vs")).child(picker(t, "pick-base", this.base ?? "Pick a base", open("base"))))
       .when(this.scope === "commit", (el) => el.child(picker(t, "pick-commit", this.commit ? `${this.commit.short} ${this.commit.subject}` : "Pick a commit", open("commit"))))
