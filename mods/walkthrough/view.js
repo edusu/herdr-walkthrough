@@ -135,6 +135,7 @@ export class Walkthrough {
     if (this.want.turn) this.turn = { id: this.want.turn }; // kept by loadTurns while it is listed
     this.summaryOpen = false; // the sidebar's summary, shown whole
     this.sidebar = saved.sidebar !== false; // the contents column, until collapsed
+    this.options = saved.options !== false; // the toolbar row, until collapsed
     this.record = saved.recordTurns === true; // record the turns of agents with no hooks while open (turnview.js)
     this.treeChangedAt = 0; // when the working tree last changed, for the recorder
     this.auto = AUTO.some((a) => a.key === saved.autoGenerate) ? saved.autoGenerate : DEFAULT_AUTO;
@@ -1135,7 +1136,7 @@ export class Walkthrough {
       .size_full().bg(inDialog ? t.popover : t.background).text_color(t.foreground).text_size(TEXT.base)
       .child(this.header(t, inDialog))
       .when(Boolean(this.update?.available()), (el) => el.child(this.updateStrip(t, this.update.available())))
-      .child(this.toolbar(t))
+      .when(this.options, (el) => el.child(this.toolbar(t)))
       .when(this.editingTask, (el) => el.child(this.taskEditor(t)))
       .child(div().flex_1().min_h(0).relative()
         .child(this.body(t))
@@ -1164,6 +1165,9 @@ export class Walkthrough {
       .child(div().flex_1())
       .when(this.loading, (el) => el.child(div().text_size(TEXT.small).text_color(t.dim).frames(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"], 90)))
       .child(this.placementSwitch(t))
+      .child(button(t, "toggle-options", this.options ? "▴" : "▾",
+        (_e, cx) => { this.options = !this.options; this.picking = null; savePrefs({ options: this.options }); cx.notify(); },
+        { kind: "ghost", small: true, tooltip: this.options ? "Hide the options" : "Show the options: what is read and how it is written" }))
       .child(action)
       .when(inDialog, (el) => el.child(button(t, "close", "Esc", () => closeOverlay(this.own.overlay), { kind: "ghost", small: true })));
   }
